@@ -107,8 +107,8 @@ describe("POST /api/stt", () => {
     expect(options.headers["xi-api-key"]).toBe("test-api-key");
   });
 
-  // AC: Gestion d'erreur avec messages appropriés
-  it("should return 502 when ElevenLabs returns an error", async () => {
+  // AC: Gestion d'erreur avec messages appropriés (IMP-9)
+  it("should return service unavailable error when ElevenLabs returns 503", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockResolvedValueOnce(
@@ -119,11 +119,13 @@ describe("POST /api/stt", () => {
     const response = await POST(request);
     const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toBe("Transcription service error");
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe("STT_TRANSCRIPTION_SERVICE_UNAVAILABLE");
+    expect(body.error.type).toBe("STT_TRANSCRIPTION");
+    expect(body.error.suggestions.length).toBeGreaterThan(0);
   });
 
-  it("should return 500 on unexpected errors", async () => {
+  it("should return typed error on unexpected errors", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockRejectedValueOnce(new Error("Network failure"));
@@ -133,11 +135,12 @@ describe("POST /api/stt", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("Internal server error");
+    expect(body.error.code).toBe("STT_TRANSCRIPTION_FAILED");
+    expect(body.error.type).toBe("STT_TRANSCRIPTION");
   });
 
-  // AC: Timeout configuré pour les appels ElevenLabs
-  it("should return 504 when ElevenLabs call times out", async () => {
+  // AC: Timeout configuré pour les appels ElevenLabs (IMP-9)
+  it("should return timeout error when ElevenLabs call times out", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockImplementationOnce(
@@ -160,7 +163,8 @@ describe("POST /api/stt", () => {
     const body = await response.json();
 
     expect(response.status).toBe(504);
-    expect(body.error).toBe("Transcription service timeout");
+    expect(body.error.code).toBe("STT_TRANSCRIPTION_TIMEOUT");
+    expect(body.error.type).toBe("STT_TRANSCRIPTION");
 
     vi.useRealTimers();
   });
