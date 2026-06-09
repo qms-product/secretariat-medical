@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import type { VoiceFlowStep } from "@/lib/errors";
 import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "@/lib/errors";
 import { requestAudioCapture } from "@/lib/audio-capture";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 
 type FlowStatus = "idle" | VoiceFlowStep | "playing";
 
@@ -12,6 +13,7 @@ export default function Home() {
   const [transcript, setTranscript] = useState("");
   const [response, setResponse] = useState("");
   const [error, setError] = useState<VoiceFlowErrorInfo | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<
     { role: "user" | "assistant"; content: string }[]
   >([]);
@@ -58,6 +60,15 @@ export default function Home() {
       setStatus("idle");
     }
   }, []);
+
+  const handleRetry = useCallback(async () => {
+    setIsRetrying(true);
+    try {
+      await startRecording();
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [startRecording]);
 
   const stopRecording = useCallback(async () => {
     const mediaRecorder = mediaRecorderRef.current;
@@ -165,22 +176,11 @@ export default function Home() {
       </div>
 
       {error && (
-        <div role="alert" style={{ color: "#e74c3c", margin: "1rem 0" }}>
-          <p>{error.message}</p>
-          {error.suggestions.length > 0 && (
-            <ul style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
-              {error.suggestions.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
-          )}
-          <button
-            onClick={startRecording}
-            style={{ marginTop: "0.5rem", padding: "0.5rem 1rem" }}
-          >
-            Reessayer
-          </button>
-        </div>
+        <ErrorDisplay
+          error={error}
+          onRetry={handleRetry}
+          isRetrying={isRetrying}
+        />
       )}
 
       {transcript && (
