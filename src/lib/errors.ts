@@ -243,6 +243,37 @@ export const VOICE_FLOW_ERRORS: Record<
         "La reponse textuelle reste disponible ci-dessus",
       ],
     },
+    quota: {
+      type: VoiceFlowErrorType.TTS_SYNTHESIS,
+      code: "TTS_SYNTHESIS_QUOTA_EXCEEDED",
+      message:
+        "Le quota du service de synthese vocale est atteint. Le service est temporairement limite.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "La reponse textuelle reste disponible ci-dessus",
+        "Contactez l'administrateur si le probleme persiste",
+      ],
+    },
+    textTooLong: {
+      type: VoiceFlowErrorType.TTS_SYNTHESIS,
+      code: "TTS_SYNTHESIS_TEXT_TOO_LONG",
+      message:
+        "Le texte a convertir en parole est trop long pour le service de synthese vocale.",
+      suggestions: [
+        "Essayez avec une demande plus courte",
+        "La reponse textuelle reste disponible ci-dessus",
+      ],
+    },
+    serviceUnavailable: {
+      type: VoiceFlowErrorType.TTS_SYNTHESIS,
+      code: "TTS_SYNTHESIS_SERVICE_UNAVAILABLE",
+      message:
+        "Le service de synthese vocale est actuellement indisponible. Veuillez reessayer ulterieurement.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "La reponse textuelle reste disponible ci-dessus",
+      ],
+    },
   },
 };
 
@@ -317,6 +348,40 @@ export function mapClaudeApiError(
   }
 
   return claudeErrors.default;
+}
+
+/**
+ * Maps an ElevenLabs TTS API HTTP status and response body to a typed VoiceFlowErrorInfo.
+ * Used by the TTS route to produce granular, user-facing error messages (IMP-11 / ADR-3).
+ */
+export function mapElevenLabsTtsError(
+  status: number,
+  responseBody: string
+): VoiceFlowErrorInfo {
+  const ttsErrors = VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS];
+
+  if (status === 429) {
+    return ttsErrors.quota;
+  }
+
+  if (status === 503 || status === 502 || status === 504) {
+    return ttsErrors.serviceUnavailable;
+  }
+
+  if (status === 422 || status === 400) {
+    const lowerBody = responseBody.toLowerCase();
+    if (
+      lowerBody.includes("too long") ||
+      lowerBody.includes("text_too_long") ||
+      lowerBody.includes("maximum") ||
+      lowerBody.includes("length") ||
+      lowerBody.includes("limit")
+    ) {
+      return ttsErrors.textTooLong;
+    }
+  }
+
+  return ttsErrors.default;
 }
 
 /** Legacy error messages kept for backward compatibility. */
