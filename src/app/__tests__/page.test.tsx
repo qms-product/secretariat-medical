@@ -6,6 +6,12 @@ import Home from "../page";
 
 // --- Mocks ---
 
+let playAudioResolve: ((value: { ok: true } | { ok: false; error: { type: string; code: string; message: string; suggestions: string[] } }) => void) | null = null;
+const mockPlayAudio = vi.fn(() => new Promise((resolve) => { playAudioResolve = resolve; }));
+vi.mock("@/lib/audio-playback", () => ({
+  playAudio: (...args: unknown[]) => mockPlayAudio(...args),
+}));
+
 const mockGetUserMedia = vi.fn();
 const mockMediaRecorderStart = vi.fn();
 const mockMediaRecorderStop = vi.fn();
@@ -67,6 +73,7 @@ describe("Home page — ProgressIndicators integration (IMP-14 / ADR-4)", () => 
   beforeEach(() => {
     vi.clearAllMocks();
     mockSourceOnended = null;
+    playAudioResolve = null;
     setupBrowserMocks();
     setupAudioContextMock();
     mockGetUserMedia.mockResolvedValue({
@@ -190,7 +197,7 @@ describe("Home page — ProgressIndicators integration (IMP-14 / ADR-4)", () => 
         fireEvent.click(screen.getByText("Appuyer pour parler"));
       });
 
-      // Set up fetch for full flow
+      // Set up fetch for full flow; playAudio mock will hang (not resolve)
       let fetchCallCount = 0;
       vi.stubGlobal("fetch", vi.fn(() => {
         fetchCallCount++;
@@ -221,7 +228,7 @@ describe("Home page — ProgressIndicators integration (IMP-14 / ADR-4)", () => 
         await vi.waitFor(() => {});
       });
 
-      // Wait for playing state
+      // Wait for playing state (playAudio mock hangs, so status stays "playing")
       await waitFor(() => {
         expect(screen.getByTestId("step-playing")).toHaveAttribute("data-active", "true");
       });
@@ -229,6 +236,11 @@ describe("Home page — ProgressIndicators integration (IMP-14 / ADR-4)", () => 
       expect(screen.getByTestId("step-capture")).toHaveAttribute("data-completed", "true");
       expect(screen.getByTestId("step-transcription")).toHaveAttribute("data-completed", "true");
       expect(screen.getByTestId("step-processing")).toHaveAttribute("data-completed", "true");
+
+      // Resolve playAudio to avoid hanging
+      await act(async () => {
+        playAudioResolve?.({ ok: true });
+      });
     });
   });
 
@@ -402,9 +414,9 @@ describe("Home page — ProgressIndicators integration (IMP-14 / ADR-4)", () => 
         expect(screen.getByTestId("step-playing")).toHaveAttribute("data-active", "true");
       });
 
-      // Simulate audio playback ending
+      // Simulate audio playback ending by resolving playAudio
       await act(async () => {
-        mockSourceOnended?.();
+        playAudioResolve?.({ ok: true });
       });
 
       // Back to idle — indicators hidden

@@ -18,9 +18,9 @@ describe("Error handling (ADR-3 / IMP-7)", () => {
       expect(VoiceFlowErrorType.TTS_SYNTHESIS).toBe("TTS_SYNTHESIS");
     });
 
-    it("should have exactly 4 error types", () => {
+    it("should have exactly 5 error types", () => {
       const values = Object.values(VoiceFlowErrorType);
-      expect(values).toHaveLength(4);
+      expect(values).toHaveLength(5);
     });
   });
 
