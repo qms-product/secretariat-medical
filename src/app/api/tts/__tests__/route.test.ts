@@ -144,8 +144,8 @@ describe("POST /api/tts", () => {
     });
   });
 
-  // AC: Gestion d'erreur avec messages appropriés
-  it("should return 502 when ElevenLabs returns an error", async () => {
+  // AC: Gestion d'erreur avec messages appropriés (IMP-11 / ADR-3)
+  it("should return typed service unavailable error when ElevenLabs returns 503", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockResolvedValueOnce(
@@ -156,11 +156,14 @@ describe("POST /api/tts", () => {
     const response = await POST(request);
     const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toBe("Synthesis service error");
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe("TTS_SYNTHESIS_SERVICE_UNAVAILABLE");
+    expect(body.error.type).toBe("TTS_SYNTHESIS");
+    expect(body.error.message).toBeTruthy();
+    expect(body.error.suggestions.length).toBeGreaterThan(0);
   });
 
-  it("should return 500 on unexpected errors", async () => {
+  it("should return typed default error on unexpected errors", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockRejectedValueOnce(new Error("Network failure"));
@@ -170,11 +173,12 @@ describe("POST /api/tts", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("Internal server error");
+    expect(body.error.code).toBe("TTS_SYNTHESIS_FAILED");
+    expect(body.error.type).toBe("TTS_SYNTHESIS");
   });
 
   // AC: Timeout configuré pour les appels ElevenLabs TTS
-  it("should return 504 when ElevenLabs call times out", async () => {
+  it("should return typed timeout error when ElevenLabs call times out", async () => {
     const { POST } = await importRoute();
 
     mockFetch.mockImplementationOnce(
@@ -197,9 +201,42 @@ describe("POST /api/tts", () => {
     const body = await response.json();
 
     expect(response.status).toBe(504);
-    expect(body.error).toBe("Synthesis service timeout");
+    expect(body.error.code).toBe("TTS_SYNTHESIS_TIMEOUT");
+    expect(body.error.type).toBe("TTS_SYNTHESIS");
 
     vi.useRealTimers();
+  });
+
+  it("should return typed quota error when ElevenLabs returns 429", async () => {
+    const { POST } = await importRoute();
+
+    mockFetch.mockResolvedValueOnce(
+      new Response("rate limit exceeded", { status: 429 })
+    );
+
+    const request = createRequestWithText("Bonjour");
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(body.error.code).toBe("TTS_SYNTHESIS_QUOTA_EXCEEDED");
+    expect(body.error.type).toBe("TTS_SYNTHESIS");
+  });
+
+  it("should return typed text too long error when ElevenLabs rejects long text", async () => {
+    const { POST } = await importRoute();
+
+    mockFetch.mockResolvedValueOnce(
+      new Response('{"detail": "text_too_long: Text exceeds maximum length"}', { status: 422 })
+    );
+
+    const request = createRequestWithText("A".repeat(10000));
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error.code).toBe("TTS_SYNTHESIS_TEXT_TOO_LONG");
+    expect(body.error.type).toBe("TTS_SYNTHESIS");
   });
 
   it("should pass abort signal to fetch call", async () => {

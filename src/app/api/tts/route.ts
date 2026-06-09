@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  VOICE_FLOW_ERRORS,
+  VoiceFlowErrorType,
+  mapElevenLabsTtsError,
+} from "@/lib/errors";
 
 const ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel - default voice
 const ELEVENLABS_TIMEOUT_MS = 30_000;
@@ -6,6 +11,7 @@ const ELEVENLABS_TIMEOUT_MS = 30_000;
 /**
  * POST /api/tts — Text-to-Speech via ElevenLabs
  * Receives text, returns audio buffer.
+ * Error handling per IMP-11 / ADR-3.
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -56,11 +62,23 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("ElevenLabs TTS error:", errorText);
-      return NextResponse.json(
-        { error: "Synthesis service error" },
-        { status: 502 }
+      console.error(
+        `ElevenLabs TTS error [${response.status}]:`,
+        errorText
       );
+
+      const errorInfo = mapElevenLabsTtsError(response.status, errorText);
+
+      const httpStatus =
+        response.status === 429
+          ? 429
+          : response.status === 503 ||
+              response.status === 502 ||
+              response.status === 504
+            ? 503
+            : 502;
+
+      return NextResponse.json({ error: errorInfo }, { status: httpStatus });
     }
 
     const audioBuffer = await response.arrayBuffer();
@@ -71,16 +89,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      console.error("ElevenLabs TTS timeout");
-      return NextResponse.json(
-        { error: "Synthesis service timeout" },
-        { status: 504 }
-      );
+      console.error("ElevenLabs TTS timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
+      const errorInfo =
+        VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS].timeout;
+      return NextResponse.json({ error: errorInfo }, { status: 504 });
     }
     console.error("TTS route error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const errorInfo =
+      VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS].default;
+    return NextResponse.json({ error: errorInfo }, { status: 500 });
   }
 }
