@@ -191,6 +191,36 @@ export const VOICE_FLOW_ERRORS: Record<
         "Essayez une demande plus courte",
       ],
     },
+    quota: {
+      type: VoiceFlowErrorType.CLAUDE_PROCESSING,
+      code: "CLAUDE_PROCESSING_QUOTA_EXCEEDED",
+      message:
+        "Le quota du service de traitement est atteint. Le service est temporairement limite.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "Contactez l'administrateur si le probleme persiste",
+      ],
+    },
+    contentFiltered: {
+      type: VoiceFlowErrorType.CLAUDE_PROCESSING,
+      code: "CLAUDE_PROCESSING_CONTENT_FILTERED",
+      message:
+        "Votre demande n'a pas pu etre traitee car elle contient du contenu inapproprie.",
+      suggestions: [
+        "Reformulez votre demande",
+        "Limitez-vous aux questions administratives du cabinet",
+      ],
+    },
+    serviceUnavailable: {
+      type: VoiceFlowErrorType.CLAUDE_PROCESSING,
+      code: "CLAUDE_PROCESSING_SERVICE_UNAVAILABLE",
+      message:
+        "Le service de traitement est actuellement indisponible. Veuillez reessayer ulterieurement.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "Verifiez votre connexion internet",
+      ],
+    },
   },
   [VoiceFlowErrorType.TTS_SYNTHESIS]: {
     default: {
@@ -253,6 +283,40 @@ export function mapElevenLabsSttError(
   }
 
   return sttErrors.default;
+}
+
+/**
+ * Maps an Anthropic Claude API error to a typed VoiceFlowErrorInfo.
+ * Used by the chat route to produce granular, user-facing error messages (IMP-10 / ADR-3).
+ */
+export function mapClaudeApiError(
+  status: number,
+  responseBody: string
+): VoiceFlowErrorInfo {
+  const claudeErrors =
+    VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING];
+
+  if (status === 429) {
+    return claudeErrors.quota;
+  }
+
+  if (status === 529 || status === 503 || status === 502 || status === 504) {
+    return claudeErrors.serviceUnavailable;
+  }
+
+  if (status === 400) {
+    const lowerBody = responseBody.toLowerCase();
+    if (
+      lowerBody.includes("content") ||
+      lowerBody.includes("inappropriate") ||
+      lowerBody.includes("harmful") ||
+      lowerBody.includes("unsafe")
+    ) {
+      return claudeErrors.contentFiltered;
+    }
+  }
+
+  return claudeErrors.default;
 }
 
 /** Legacy error messages kept for backward compatibility. */
