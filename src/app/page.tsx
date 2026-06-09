@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import type { VoiceFlowStep } from "@/lib/errors";
 import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "@/lib/errors";
 import { requestAudioCapture } from "@/lib/audio-capture";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
-
-type FlowStatus = "idle" | VoiceFlowStep | "playing";
+import { ProgressIndicators, type FlowStatus } from "@/components/ProgressIndicators";
 
 export default function Home() {
   const [status, setStatus] = useState<FlowStatus>("idle");
@@ -174,6 +172,8 @@ export default function Home() {
           <p>{statusLabels[status]}</p>
         )}
       </div>
+
+      <ProgressIndicators currentStep={status} />
 
       {error && (
         <ErrorDisplay
