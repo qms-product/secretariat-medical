@@ -1,24 +1,58 @@
-import { OFFICE_INFO, TIME_SLOTS } from "./data";
+import { OFFICE_INFO, TIME_SLOTS, type OfficeInfo, type TimeSlot } from "./data";
 
 /**
- * System prompt for Claude per ADR-5.
- * Explicitly forbids medical advice and restricts responses to administrative info.
+ * Formats fictitious data (planning + administrative) into structured text
+ * optimized for Claude comprehension. Per IMP-6 / ADR-2 / REQ-9.
+ * Only fictitious data constants are used — no real patient data.
  */
-export function buildSystemPrompt(): string {
-  const availableSlots = TIME_SLOTS.filter((s) => s.available);
+export function formatContexte(
+  office: OfficeInfo = OFFICE_INFO,
+  slots: TimeSlot[] = TIME_SLOTS
+): string {
+  const doctorsText = office.doctors
+    .map((d) => `- ${d.name}, ${d.specialty}, ${d.office}, tel: ${d.phone}`)
+    .join("\n");
+
+  const availableSlots = slots.filter((s) => s.available);
   const slotsText = availableSlots
     .map((s) => `- ${s.date} a ${s.time} avec ${s.doctor} (${s.duration} min)`)
     .join("\n");
 
-  return `Tu es l'assistant vocal du ${OFFICE_INFO.name}, situe au ${OFFICE_INFO.address}.
-Telephone : ${OFFICE_INFO.phone}
-Horaires : ${OFFICE_INFO.openingHours}
+  const occupiedSlots = slots.filter((s) => !s.available);
+  const occupiedText = occupiedSlots
+    .map(
+      (s) =>
+        `- ${s.date} a ${s.time} avec ${s.doctor} — ${s.patientName} (${s.duration} min)`
+    )
+    .join("\n");
+
+  return `INFORMATIONS DU CABINET :
+Nom : ${office.name}
+Adresse : ${office.address}
+Telephone : ${office.phone}
+Horaires : ${office.openingHours}
 
 Medecins :
-${OFFICE_INFO.doctors.map((d) => `- ${d.name}, ${d.specialty}, ${d.office}, tel: ${d.phone}`).join("\n")}
+${doctorsText}
 
 Creneaux disponibles :
 ${slotsText}
+
+Creneaux occupes :
+${occupiedText}`;
+}
+
+/**
+ * System prompt for Claude per ADR-5.
+ * Explicitly forbids medical advice and restricts responses to administrative info.
+ * Injects fictitious context automatically per IMP-6.
+ */
+export function buildSystemPrompt(): string {
+  const contexte = formatContexte();
+
+  return `Tu es l'assistant vocal du ${OFFICE_INFO.name}, situe au ${OFFICE_INFO.address}.
+
+${contexte}
 
 INTERDICTION ABSOLUE — CONSEIL MEDICAL :
 Tu ne donnes JAMAIS de conseil medical, de diagnostic, d'avis sur des symptomes, ni de recommandation de traitement, de medicament ou de posologie.
