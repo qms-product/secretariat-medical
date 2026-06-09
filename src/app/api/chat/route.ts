@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt } from "@/lib/system-prompt";
+import { containsAppointmentAction } from "@/lib/request-validator";
 import {
   VOICE_FLOW_ERRORS,
   VoiceFlowErrorType,
@@ -31,6 +32,20 @@ export async function POST(request: NextRequest) {
         { error: "Messages array is required" },
         { status: 400 }
       );
+    }
+
+    // IMP-19: Server-side validation — reject requests attempting to book/modify appointments
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((m: { role: string }) => m.role === "user");
+    if (
+      lastUserMessage &&
+      containsAppointmentAction(lastUserMessage.content)
+    ) {
+      return NextResponse.json({
+        reply:
+          "Je ne suis pas en mesure de prendre ou modifier des rendez-vous. Je peux uniquement vous informer sur les creneaux disponibles. Pour prendre rendez-vous, veuillez contacter le cabinet directement.",
+      });
     }
 
     const client = new Anthropic({ apiKey });

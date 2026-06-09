@@ -57,7 +57,6 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
       expect(prompt).toContain("Horaires d'ouverture");
       expect(prompt).toContain("Creneaux de rendez-vous");
       expect(prompt).toContain("Coordonnees du cabinet");
-      expect(prompt).toContain("Prise de rendez-vous");
     });
 
     it("should refuse requests outside administrative scope", () => {
@@ -74,6 +73,47 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
     it("should be deterministic (same output on each call)", () => {
       const prompt2 = buildSystemPrompt();
       expect(prompt).toBe(prompt2);
+    });
+  });
+
+  describe("Interdiction prise de rendez-vous et modification de planning (IMP-19 / REQ-22)", () => {
+    it("should contain absolute prohibition of appointment booking", () => {
+      expect(prompt).toContain("INTERDICTION ABSOLUE");
+      expect(prompt).toContain("PRISE DE RENDEZ-VOUS ET MODIFICATION DE PLANNING");
+    });
+
+    it("should forbid real appointment booking", () => {
+      expect(prompt).toContain("ne prends JAMAIS de rendez-vous reel");
+    });
+
+    it("should forbid confirming reservations", () => {
+      expect(prompt).toContain("ne confirmes JAMAIS une reservation");
+    });
+
+    it("should forbid modifying schedules", () => {
+      expect(prompt).toContain("ne modifies JAMAIS un planning");
+    });
+
+    it("should forbid simulating appointment booking", () => {
+      expect(prompt).toContain("ne dois JAMAIS simuler une prise de rendez-vous");
+    });
+
+    it("should provide a redirection message for appointment requests", () => {
+      expect(prompt).toContain("Je ne suis pas en mesure de prendre ou modifier des rendez-vous");
+      expect(prompt).toContain("contacter le cabinet");
+    });
+
+    it("should explicitly state responses are informational only", () => {
+      expect(prompt).toContain("assistant purement informatif");
+      expect(prompt).toContain("Aucune action reelle");
+    });
+
+    it("should not include appointment booking in allowed scope", () => {
+      expect(prompt).not.toContain("- Prise de rendez-vous");
+    });
+
+    it("should specify slots are consultation-only, no reservation", () => {
+      expect(prompt).toContain("consultation uniquement, sans reservation");
     });
   });
 
