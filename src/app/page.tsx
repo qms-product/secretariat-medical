@@ -5,6 +5,8 @@ import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "
 import { requestAudioCapture } from "@/lib/audio-capture";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { ProgressIndicators, type FlowStatus } from "@/components/ProgressIndicators";
+import { TranscriptDisplay } from "@/components/TranscriptDisplay";
+import { ResponseDisplay } from "@/components/ResponseDisplay";
 
 export default function Home() {
   const [status, setStatus] = useState<FlowStatus>("idle");
@@ -183,17 +185,8 @@ export default function Home() {
         />
       )}
 
-      {transcript && (
-        <div style={{ margin: "1rem 0" }}>
-          <strong>Vous :</strong> {transcript}
-        </div>
-      )}
-
-      {response && (
-        <div style={{ margin: "1rem 0" }}>
-          <strong>Assistant :</strong> {response}
-        </div>
-      )}
+      <TranscriptDisplay transcript={transcript} />
+      <ResponseDisplay response={response} />
     </main>
   );
 }
