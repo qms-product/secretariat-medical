@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  VOICE_FLOW_ERRORS,
+  VoiceFlowErrorType,
+  mapElevenLabsSttError,
+} from "@/lib/errors";
 
 const ELEVENLABS_TIMEOUT_MS = 30_000;
 
 /**
  * POST /api/stt — Speech-to-Text via ElevenLabs
  * Receives audio blob, returns transcribed text.
+ * Error handling per IMP-9 / ADR-3.
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -32,7 +38,10 @@ export async function POST(request: NextRequest) {
     elevenLabsForm.append("language_code", "fra");
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), ELEVENLABS_TIMEOUT_MS);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      ELEVENLABS_TIMEOUT_MS
+    );
 
     let response: Response;
     try {
@@ -53,27 +62,39 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("ElevenLabs STT error:", errorText);
-      return NextResponse.json(
-        { error: "Transcription service error" },
-        { status: 502 }
+      console.error(
+        `ElevenLabs STT error [${response.status}]:`,
+        errorText
       );
+
+      const errorInfo = mapElevenLabsSttError(response.status, errorText);
+
+      const httpStatus =
+        response.status === 429
+          ? 429
+          : response.status === 422 || response.status === 415
+            ? 400
+            : response.status === 503 ||
+                response.status === 502 ||
+                response.status === 504
+              ? 503
+              : 502;
+
+      return NextResponse.json({ error: errorInfo }, { status: httpStatus });
     }
 
     const data = await response.json();
     return NextResponse.json({ text: data.text });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      console.error("ElevenLabs STT timeout");
-      return NextResponse.json(
-        { error: "Transcription service timeout" },
-        { status: 504 }
-      );
+      console.error("ElevenLabs STT timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
+      const errorInfo =
+        VOICE_FLOW_ERRORS[VoiceFlowErrorType.STT_TRANSCRIPTION].timeout;
+      return NextResponse.json({ error: errorInfo }, { status: 504 });
     }
     console.error("STT route error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const errorInfo =
+      VOICE_FLOW_ERRORS[VoiceFlowErrorType.STT_TRANSCRIPTION].default;
+    return NextResponse.json({ error: errorInfo }, { status: 500 });
   }
 }

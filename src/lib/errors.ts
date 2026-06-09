@@ -139,6 +139,36 @@ export const VOICE_FLOW_ERRORS: Record<
         "Verifiez votre connexion internet",
       ],
     },
+    quota: {
+      type: VoiceFlowErrorType.STT_TRANSCRIPTION,
+      code: "STT_TRANSCRIPTION_QUOTA_EXCEEDED",
+      message:
+        "Le quota du service de transcription est atteint. Le service est temporairement limite.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "Contactez l'administrateur si le probleme persiste",
+      ],
+    },
+    audioFormat: {
+      type: VoiceFlowErrorType.STT_TRANSCRIPTION,
+      code: "STT_TRANSCRIPTION_AUDIO_FORMAT",
+      message:
+        "Le format audio n'est pas pris en charge par le service de transcription.",
+      suggestions: [
+        "Verifiez que votre microphone fonctionne correctement",
+        "Essayez avec un autre navigateur",
+      ],
+    },
+    serviceUnavailable: {
+      type: VoiceFlowErrorType.STT_TRANSCRIPTION,
+      code: "STT_TRANSCRIPTION_SERVICE_UNAVAILABLE",
+      message:
+        "Le service de transcription est actuellement indisponible. Veuillez reessayer ulterieurement.",
+      suggestions: [
+        "Reessayez dans quelques minutes",
+        "Verifiez votre connexion internet",
+      ],
+    },
   },
   [VoiceFlowErrorType.CLAUDE_PROCESSING]: {
     default: {
@@ -185,6 +215,45 @@ export const VOICE_FLOW_ERRORS: Record<
     },
   },
 };
+
+/**
+ * Maps an ElevenLabs STT API HTTP status and response body to a typed VoiceFlowErrorInfo.
+ * Used by the STT route to produce granular, user-facing error messages (IMP-9 / ADR-3).
+ */
+export function mapElevenLabsSttError(
+  status: number,
+  responseBody: string
+): VoiceFlowErrorInfo {
+  const sttErrors = VOICE_FLOW_ERRORS[VoiceFlowErrorType.STT_TRANSCRIPTION];
+
+  if (status === 429) {
+    return sttErrors.quota;
+  }
+
+  if (status === 422 || status === 415) {
+    return sttErrors.audioFormat;
+  }
+
+  if (status === 503 || status === 502 || status === 504) {
+    return sttErrors.serviceUnavailable;
+  }
+
+  if (status === 401 || status === 403) {
+    return sttErrors.default;
+  }
+
+  // Try to detect audio format issues from response body
+  const lowerBody = responseBody.toLowerCase();
+  if (
+    lowerBody.includes("audio") ||
+    lowerBody.includes("format") ||
+    lowerBody.includes("unsupported")
+  ) {
+    return sttErrors.audioFormat;
+  }
+
+  return sttErrors.default;
+}
 
 /** Legacy error messages kept for backward compatibility. */
 export const ERROR_MESSAGES: Record<VoiceFlowStep, string> = {
