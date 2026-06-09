@@ -38,6 +38,17 @@ src/
 - **ADR-4**: Visual progress indicators for each step of the voice flow.
 - **ADR-5**: Claude system prompt explicitly forbids medical advice, redirects to professionals.
 
+## Docker
+- The app runs in Docker: `docker compose up -d` to start, `docker compose down` to stop
+- After creating or modifying code, ALWAYS verify it works in Docker:
+  1. `docker compose build`
+  2. `docker compose up -d`
+  3. Verify the app responds (e.g., `curl -s http://localhost:3000`)
+  4. `docker compose down`
+- If `Dockerfile` or `docker-compose.yml` don't exist yet, create them first
+- The Dockerfile should use multi-stage build (deps → build → run)
+- docker-compose.yml must pass env vars from `.env` file
+
 ## Coding Conventions
 - Server-side API keys only (never prefix with NEXT_PUBLIC_)
 - All external calls proxied through `/api/*` routes
