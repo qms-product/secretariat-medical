@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "@/lib/errors";
 import { requestAudioCapture } from "@/lib/audio-capture";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
