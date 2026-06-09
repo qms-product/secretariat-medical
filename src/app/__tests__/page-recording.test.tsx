@@ -6,6 +6,10 @@ import Home from "../page";
 
 // --- Mocks ---
 
+vi.mock("@/lib/audio-playback", () => ({
+  playAudio: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 const mockGetUserMedia = vi.fn();
 const mockMediaRecorderStart = vi.fn();
 const mockMediaRecorderStop = vi.fn();

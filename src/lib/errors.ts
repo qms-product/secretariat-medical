@@ -11,6 +11,7 @@ export enum VoiceFlowErrorType {
   STT_TRANSCRIPTION = "STT_TRANSCRIPTION",
   CLAUDE_PROCESSING = "CLAUDE_PROCESSING",
   TTS_SYNTHESIS = "TTS_SYNTHESIS",
+  AUDIO_PLAYBACK = "AUDIO_PLAYBACK",
 }
 
 /** Structured error object with code, message and resolution suggestions. */
@@ -30,7 +31,8 @@ export type VoiceFlowStep =
   | "capture"
   | "transcription"
   | "processing"
-  | "synthesis";
+  | "synthesis"
+  | "playing";
 
 /** Maps VoiceFlowErrorType to the corresponding VoiceFlowStep. */
 export const ERROR_TYPE_TO_STEP: Record<VoiceFlowErrorType, VoiceFlowStep> = {
@@ -38,6 +40,7 @@ export const ERROR_TYPE_TO_STEP: Record<VoiceFlowErrorType, VoiceFlowStep> = {
   [VoiceFlowErrorType.STT_TRANSCRIPTION]: "transcription",
   [VoiceFlowErrorType.CLAUDE_PROCESSING]: "processing",
   [VoiceFlowErrorType.TTS_SYNTHESIS]: "synthesis",
+  [VoiceFlowErrorType.AUDIO_PLAYBACK]: "playing",
 };
 
 export class VoiceFlowError extends Error {
@@ -75,6 +78,7 @@ function stepToErrorType(step: VoiceFlowStep): VoiceFlowErrorType {
     transcription: VoiceFlowErrorType.STT_TRANSCRIPTION,
     processing: VoiceFlowErrorType.CLAUDE_PROCESSING,
     synthesis: VoiceFlowErrorType.TTS_SYNTHESIS,
+    playing: VoiceFlowErrorType.AUDIO_PLAYBACK,
   };
   return map[step];
 }
@@ -275,6 +279,40 @@ export const VOICE_FLOW_ERRORS: Record<
       ],
     },
   },
+  [VoiceFlowErrorType.AUDIO_PLAYBACK]: {
+    default: {
+      type: VoiceFlowErrorType.AUDIO_PLAYBACK,
+      code: "AUDIO_PLAYBACK_FAILED",
+      message:
+        "Erreur lors de la lecture audio. La reponse textuelle reste disponible ci-dessus.",
+      suggestions: [
+        "Verifiez que le son n'est pas coupe sur votre appareil",
+        "Reessayez dans quelques instants",
+        "La reponse textuelle reste disponible ci-dessus",
+      ],
+    },
+    decodeError: {
+      type: VoiceFlowErrorType.AUDIO_PLAYBACK,
+      code: "AUDIO_PLAYBACK_DECODE_ERROR",
+      message:
+        "Impossible de decoder le fichier audio recu. Le format audio n'est pas pris en charge.",
+      suggestions: [
+        "Reessayez dans quelques instants",
+        "La reponse textuelle reste disponible ci-dessus",
+      ],
+    },
+    contextError: {
+      type: VoiceFlowErrorType.AUDIO_PLAYBACK,
+      code: "AUDIO_PLAYBACK_CONTEXT_ERROR",
+      message:
+        "Impossible d'initialiser la lecture audio. Votre navigateur a bloque la lecture automatique.",
+      suggestions: [
+        "Cliquez sur la page pour autoriser la lecture audio",
+        "Verifiez les parametres de lecture automatique de votre navigateur",
+        "La reponse textuelle reste disponible ci-dessus",
+      ],
+    },
+  },
 };
 
 /**
@@ -393,4 +431,6 @@ export const ERROR_MESSAGES: Record<VoiceFlowStep, string> = {
     VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING].default.message,
   synthesis:
     VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS].default.message,
+  playing:
+    VOICE_FLOW_ERRORS[VoiceFlowErrorType.AUDIO_PLAYBACK].default.message,
 };
