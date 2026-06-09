@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const ELEVENLABS_TIMEOUT_MS = 30_000;
+
 /**
  * POST /api/stt — Speech-to-Text via ElevenLabs
  * Receives audio blob, returns transcribed text.
@@ -29,16 +31,25 @@ export async function POST(request: NextRequest) {
     elevenLabsForm.append("model_id", "scribe_v1");
     elevenLabsForm.append("language_code", "fra");
 
-    const response = await fetch(
-      "https://api.elevenlabs.io/v1/speech-to-text",
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-        },
-        body: elevenLabsForm,
-      }
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ELEVENLABS_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(
+        "https://api.elevenlabs.io/v1/speech-to-text",
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": apiKey,
+          },
+          body: elevenLabsForm,
+          signal: controller.signal,
+        }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -52,6 +63,13 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json({ text: data.text });
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      console.error("ElevenLabs STT timeout");
+      return NextResponse.json(
+        { error: "Transcription service timeout" },
+        { status: 504 }
+      );
+    }
     console.error("STT route error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
