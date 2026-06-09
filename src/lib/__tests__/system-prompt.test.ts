@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildSystemPrompt } from "../system-prompt";
+import { buildSystemPrompt, formatContexte } from "../system-prompt";
+import { OFFICE_INFO, TIME_SLOTS } from "../data";
 
 describe("System prompt (ADR-5 / IMP-15)", () => {
   const prompt = buildSystemPrompt();
@@ -114,6 +115,131 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
 
     it("should specify slots are consultation-only, no reservation", () => {
       expect(prompt).toContain("consultation uniquement, sans reservation");
+    });
+  });
+
+  describe("Fictitious context injection (IMP-6 / REQ-9 / REQ-21)", () => {
+    it("should import and use fictitious data constants", () => {
+      expect(prompt).toContain(OFFICE_INFO.name);
+      expect(prompt).toContain(OFFICE_INFO.address);
+      expect(prompt).toContain(OFFICE_INFO.phone);
+      expect(prompt).toContain(OFFICE_INFO.openingHours);
+    });
+
+    it("should inject planning data (available slots) into system prompt", () => {
+      const availableSlots = TIME_SLOTS.filter((s) => s.available);
+      for (const slot of availableSlots) {
+        expect(prompt).toContain(slot.date);
+        expect(prompt).toContain(slot.time);
+        expect(prompt).toContain(slot.doctor);
+      }
+    });
+
+    it("should inject administrative data (doctors) into system prompt", () => {
+      for (const doctor of OFFICE_INFO.doctors) {
+        expect(prompt).toContain(doctor.name);
+        expect(prompt).toContain(doctor.specialty);
+        expect(prompt).toContain(doctor.office);
+        expect(prompt).toContain(doctor.phone);
+      }
+    });
+
+    it("should inject occupied slots into system prompt", () => {
+      const occupiedSlots = TIME_SLOTS.filter((s) => !s.available);
+      for (const slot of occupiedSlots) {
+        expect(prompt).toContain(slot.patientName!);
+      }
+    });
+
+    it("should use only fictitious data (no real data sources)", () => {
+      expect(prompt).toContain("Cabinet Medical Fictif");
+      expect(prompt).toContain("donnees sont fictives");
+      expect(prompt).toContain("demonstration");
+    });
+
+    it("should automatically inject context on every call", () => {
+      const prompt1 = buildSystemPrompt();
+      const prompt2 = buildSystemPrompt();
+      expect(prompt1).toContain("INFORMATIONS DU CABINET");
+      expect(prompt2).toContain("INFORMATIONS DU CABINET");
+      expect(prompt1).toBe(prompt2);
+    });
+  });
+
+  describe("formatContexte() function (IMP-6)", () => {
+    const contexte = formatContexte();
+
+    it("should structure administrative data with clear sections", () => {
+      expect(contexte).toContain("INFORMATIONS DU CABINET :");
+      expect(contexte).toContain("Medecins :");
+      expect(contexte).toContain("Creneaux disponibles :");
+      expect(contexte).toContain("Creneaux occupes :");
+    });
+
+    it("should include office name, address, phone, and hours", () => {
+      expect(contexte).toContain(`Nom : ${OFFICE_INFO.name}`);
+      expect(contexte).toContain(`Adresse : ${OFFICE_INFO.address}`);
+      expect(contexte).toContain(`Telephone : ${OFFICE_INFO.phone}`);
+      expect(contexte).toContain(`Horaires : ${OFFICE_INFO.openingHours}`);
+    });
+
+    it("should format all doctors with specialty and contact info", () => {
+      for (const doctor of OFFICE_INFO.doctors) {
+        expect(contexte).toContain(
+          `- ${doctor.name}, ${doctor.specialty}, ${doctor.office}, tel: ${doctor.phone}`
+        );
+      }
+    });
+
+    it("should list only available slots in available section", () => {
+      const availableSlots = TIME_SLOTS.filter((s) => s.available);
+      for (const slot of availableSlots) {
+        expect(contexte).toContain(
+          `- ${slot.date} a ${slot.time} avec ${slot.doctor} (${slot.duration} min)`
+        );
+      }
+    });
+
+    it("should list occupied slots with patient names", () => {
+      const occupiedSlots = TIME_SLOTS.filter((s) => !s.available);
+      for (const slot of occupiedSlots) {
+        expect(contexte).toContain(slot.patientName!);
+        expect(contexte).toContain(slot.doctor);
+      }
+    });
+
+    it("should accept custom data parameters (uses only provided data)", () => {
+      const customOffice = {
+        ...OFFICE_INFO,
+        name: "Cabinet Test Custom",
+        doctors: [
+          {
+            name: "Dr. Test",
+            specialty: "Test",
+            phone: "00 00 00 00 00",
+            office: "Bureau 999",
+          },
+        ],
+      };
+      const customSlots = [
+        {
+          id: "test-1",
+          date: "2099-01-01",
+          time: "08:00",
+          duration: 15,
+          doctor: "Dr. Test",
+          available: true,
+        },
+      ];
+      const result = formatContexte(customOffice, customSlots);
+      expect(result).toContain("Cabinet Test Custom");
+      expect(result).toContain("Dr. Test");
+      expect(result).toContain("2099-01-01");
+      expect(result).not.toContain("Dr. Marie Dupont");
+    });
+
+    it("should be integrated into buildSystemPrompt output", () => {
+      expect(prompt).toContain(contexte);
     });
   });
 
