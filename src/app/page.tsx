@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { VoiceFlowStep } from "@/lib/errors";
+import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "@/lib/errors";
+import { requestAudioCapture } from "@/lib/audio-capture";
 
 type FlowStatus = "idle" | VoiceFlowStep | "playing";
 
@@ -9,7 +11,7 @@ export default function Home() {
   const [status, setStatus] = useState<FlowStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [response, setResponse] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<VoiceFlowErrorInfo | null>(null);
   const [conversationHistory, setConversationHistory] = useState<
     { role: "user" | "assistant"; content: string }[]
   >([]);
@@ -17,14 +19,21 @@ export default function Home() {
   const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = useCallback(async () => {
-    setError("");
+    setError(null);
     setTranscript("");
     setResponse("");
 
+    setStatus("capture");
+    const result = await requestAudioCapture();
+
+    if (!result.ok) {
+      setError(result.error);
+      setStatus("idle");
+      return;
+    }
+
     try {
-      setStatus("capture");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(result.stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -34,9 +43,18 @@ export default function Home() {
 
       mediaRecorder.start();
     } catch {
-      setError(
-        "Erreur lors de la capture audio. Verifiez que votre microphone est autorise."
-      );
+      result.stream.getTracks().forEach((t) => t.stop());
+      setError({
+        type: VoiceFlowErrorType.AUDIO_CAPTURE,
+        code: "AUDIO_CAPTURE_MEDIARECORDER_INIT",
+        message:
+          "Impossible d'initialiser l'enregistrement audio. Votre navigateur ne supporte peut-etre pas le format requis.",
+        suggestions: [
+          "Essayez avec un autre navigateur (Chrome, Firefox, Edge)",
+          "Mettez a jour votre navigateur",
+          "Rechargez la page",
+        ],
+      });
       setStatus("idle");
     }
   }, []);
@@ -104,22 +122,14 @@ export default function Home() {
       source.connect(audioContext.destination);
       source.onended = () => setStatus("idle");
       source.start();
-    } catch (err) {
-      const step =
+    } catch {
+      const errorType =
         status === "transcription"
-          ? "transcription"
+          ? VoiceFlowErrorType.STT_TRANSCRIPTION
           : status === "processing"
-            ? "processing"
-            : "synthesis";
-      const messages: Record<string, string> = {
-        transcription:
-          "Erreur lors de la transcription. Le service est temporairement indisponible.",
-        processing:
-          "Erreur lors du traitement. Le service est temporairement indisponible.",
-        synthesis:
-          "Erreur lors de la synthese vocale. Le service est temporairement indisponible.",
-      };
-      setError(messages[step] || String(err));
+            ? VoiceFlowErrorType.CLAUDE_PROCESSING
+            : VoiceFlowErrorType.TTS_SYNTHESIS;
+      setError(VOICE_FLOW_ERRORS[errorType].default);
       setStatus("idle");
     }
   }, [conversationHistory, status]);
@@ -156,7 +166,20 @@ export default function Home() {
 
       {error && (
         <div role="alert" style={{ color: "#e74c3c", margin: "1rem 0" }}>
-          {error}
+          <p>{error.message}</p>
+          {error.suggestions.length > 0 && (
+            <ul style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
+              {error.suggestions.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={startRecording}
+            style={{ marginTop: "0.5rem", padding: "0.5rem 1rem" }}
+          >
+            Reessayer
+          </button>
         </div>
       )}
 
