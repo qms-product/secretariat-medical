@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel - default voice
+const ELEVENLABS_TIMEOUT_MS = 30_000;
 
 /**
  * POST /api/tts — Text-to-Speech via ElevenLabs
@@ -25,24 +26,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_multilingual_v2",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ELEVENLABS_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+        {
+          method: "POST",
+          headers: {
+            "xi-api-key": apiKey,
+            "Content-Type": "application/json",
           },
-        }),
-      }
-    );
+          body: JSON.stringify({
+            text,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+            },
+          }),
+          signal: controller.signal,
+        }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -60,6 +70,13 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      console.error("ElevenLabs TTS timeout");
+      return NextResponse.json(
+        { error: "Synthesis service timeout" },
+        { status: 504 }
+      );
+    }
     console.error("TTS route error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
