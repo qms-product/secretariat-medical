@@ -1,10 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { validateEnv, getRequiredEnvVars } from "../env";
+import { validateEnv, getRequiredEnvVars, getEnvDefaults, getEnvVar } from "../env";
+
+function stubAllRequired() {
+  vi.stubEnv("ELEVENLABS_API_KEY", "test-elevenlabs-key");
+  vi.stubEnv("ANTHROPIC_API_KEY", "test-anthropic-key");
+  vi.stubEnv("CAL_COM_API_KEY", "test-calcom-key");
+  vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "123");
+}
+
+function clearAllRequired() {
+  vi.stubEnv("ELEVENLABS_API_KEY", "");
+  vi.stubEnv("ANTHROPIC_API_KEY", "");
+  vi.stubEnv("CAL_COM_API_KEY", "");
+  vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "");
+}
 
 describe("Environment variable validation (IMP-4)", () => {
   beforeEach(() => {
-    vi.stubEnv("ELEVENLABS_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    clearAllRequired();
   });
 
   afterEach(() => {
@@ -12,8 +25,7 @@ describe("Environment variable validation (IMP-4)", () => {
   });
 
   it("should return valid when all required env vars are set", () => {
-    vi.stubEnv("ELEVENLABS_API_KEY", "test-elevenlabs-key");
-    vi.stubEnv("ANTHROPIC_API_KEY", "test-anthropic-key");
+    stubAllRequired();
 
     const result = validateEnv();
     expect(result.valid).toBe(true);
@@ -21,8 +33,8 @@ describe("Environment variable validation (IMP-4)", () => {
   });
 
   it("should detect missing ELEVENLABS_API_KEY", () => {
+    stubAllRequired();
     vi.stubEnv("ELEVENLABS_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_API_KEY", "test-anthropic-key");
 
     const result = validateEnv();
     expect(result.valid).toBe(false);
@@ -30,7 +42,7 @@ describe("Environment variable validation (IMP-4)", () => {
   });
 
   it("should detect missing ANTHROPIC_API_KEY", () => {
-    vi.stubEnv("ELEVENLABS_API_KEY", "test-elevenlabs-key");
+    stubAllRequired();
     vi.stubEnv("ANTHROPIC_API_KEY", "");
 
     const result = validateEnv();
@@ -39,29 +51,34 @@ describe("Environment variable validation (IMP-4)", () => {
   });
 
   it("should detect all missing env vars", () => {
-    vi.stubEnv("ELEVENLABS_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    clearAllRequired();
 
     const result = validateEnv();
     expect(result.valid).toBe(false);
     expect(result.missing).toContain("ELEVENLABS_API_KEY");
     expect(result.missing).toContain("ANTHROPIC_API_KEY");
+    expect(result.missing).toContain("CAL_COM_API_KEY");
+    expect(result.missing).toContain("CAL_COM_EVENT_TYPE_ID");
   });
 
   it("should reject whitespace-only values", () => {
     vi.stubEnv("ELEVENLABS_API_KEY", "   ");
     vi.stubEnv("ANTHROPIC_API_KEY", "  \t  ");
+    vi.stubEnv("CAL_COM_API_KEY", "  ");
+    vi.stubEnv("CAL_COM_EVENT_TYPE_ID", " ");
 
     const result = validateEnv();
     expect(result.valid).toBe(false);
-    expect(result.missing).toHaveLength(2);
+    expect(result.missing).toHaveLength(4);
   });
 
   it("should list all required env var names", () => {
     const required = getRequiredEnvVars();
     expect(required).toContain("ELEVENLABS_API_KEY");
     expect(required).toContain("ANTHROPIC_API_KEY");
-    expect(required).toHaveLength(2);
+    expect(required).toContain("CAL_COM_API_KEY");
+    expect(required).toContain("CAL_COM_EVENT_TYPE_ID");
+    expect(required).toHaveLength(4);
   });
 
   it("should not require any NEXT_PUBLIC_ prefixed variables", () => {
@@ -69,5 +86,67 @@ describe("Environment variable validation (IMP-4)", () => {
     for (const key of required) {
       expect(key).not.toMatch(/^NEXT_PUBLIC_/);
     }
+  });
+});
+
+describe("Cal.com environment variables (IMP-24)", () => {
+  beforeEach(() => {
+    clearAllRequired();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("should detect missing CAL_COM_API_KEY", () => {
+    stubAllRequired();
+    vi.stubEnv("CAL_COM_API_KEY", "");
+
+    const result = validateEnv();
+    expect(result.valid).toBe(false);
+    expect(result.missing).toContain("CAL_COM_API_KEY");
+  });
+
+  it("should detect missing CAL_COM_EVENT_TYPE_ID", () => {
+    stubAllRequired();
+    vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "");
+
+    const result = validateEnv();
+    expect(result.valid).toBe(false);
+    expect(result.missing).toContain("CAL_COM_EVENT_TYPE_ID");
+  });
+
+  it("should have a default value for CAL_COM_BASE_URL", () => {
+    const defaults = getEnvDefaults();
+    expect(defaults.CAL_COM_BASE_URL).toBe("http://localhost:3000");
+  });
+
+  it("should not require CAL_COM_BASE_URL (has default)", () => {
+    const required = getRequiredEnvVars();
+    expect(required).not.toContain("CAL_COM_BASE_URL");
+  });
+
+  it("should return default CAL_COM_BASE_URL when not set", () => {
+    const value = getEnvVar("CAL_COM_BASE_URL");
+    expect(value).toBe("http://localhost:3000");
+  });
+
+  it("should return explicit CAL_COM_BASE_URL when set", () => {
+    vi.stubEnv("CAL_COM_BASE_URL", "https://cal.example.com");
+
+    const value = getEnvVar("CAL_COM_BASE_URL");
+    expect(value).toBe("https://cal.example.com");
+  });
+
+  it("should return undefined for unknown env var without default", () => {
+    const value = getEnvVar("UNKNOWN_VAR");
+    expect(value).toBeUndefined();
+  });
+
+  it("should fall back to default when value is whitespace-only", () => {
+    vi.stubEnv("CAL_COM_BASE_URL", "   ");
+
+    const value = getEnvVar("CAL_COM_BASE_URL");
+    expect(value).toBe("http://localhost:3000");
   });
 });
