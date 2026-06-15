@@ -16,6 +16,7 @@ const REQUIRED_ENV_VARS = [
  */
 const ENV_DEFAULTS: Record<string, string> = {
   CAL_COM_BASE_URL: "http://localhost:3000",
+  PORT: "3001",
 } as const;
 
 export type RequiredEnvVar = (typeof REQUIRED_ENV_VARS)[number];

@@ -8,7 +8,7 @@
 - **Linting**: ESLint (next/core-web-vitals + next/typescript)
 
 ## Commands
-- `npm run dev` — Start dev server
+- `npm run dev` — Start dev server (port 3001)
 - `npm run build` — Production build
 - `npm run lint` — Run ESLint
 - `npm test` — Run tests (Vitest)
@@ -37,13 +37,14 @@ src/
 - **ADR-3**: Granular error messages per voice flow step (capture, transcription, processing, synthesis).
 - **ADR-4**: Visual progress indicators for each step of the voice flow.
 - **ADR-5**: Claude system prompt explicitly forbids medical advice, redirects to professionals.
+- **ADR-10**: Application runs on port 3001 to avoid conflicts with Cal.com on port 3000.
 
 ## Docker
 - The app runs in Docker: `docker compose up -d` to start, `docker compose down` to stop
 - After creating or modifying code, ALWAYS verify it works in Docker:
   1. `docker compose build`
   2. `docker compose up -d`
-  3. Verify the app responds (e.g., `curl -s http://localhost:3000`)
+  3. Verify the app responds (e.g., `curl -s http://localhost:3001`)
   4. `docker compose down`
 - If `Dockerfile` or `docker-compose.yml` don't exist yet, create them first
 - The Dockerfile should use multi-stage build (deps → build → run)
