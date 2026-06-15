@@ -150,3 +150,47 @@ describe("Cal.com environment variables (IMP-24)", () => {
     expect(value).toBe("http://localhost:3000");
   });
 });
+
+describe("CALCOM_DATABASE_URL environment variable (IMP-30, ADR-11)", () => {
+  beforeEach(() => {
+    clearAllRequired();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("should have a default value for CALCOM_DATABASE_URL", () => {
+    const defaults = getEnvDefaults();
+    expect(defaults.CALCOM_DATABASE_URL).toBe(
+      "postgresql://calcom:calcom@localhost:5432/calcom"
+    );
+  });
+
+  it("should not require CALCOM_DATABASE_URL (has default)", () => {
+    const required = getRequiredEnvVars();
+    expect(required).not.toContain("CALCOM_DATABASE_URL");
+  });
+
+  it("should return default CALCOM_DATABASE_URL when not set", () => {
+    const value = getEnvVar("CALCOM_DATABASE_URL");
+    expect(value).toBe("postgresql://calcom:calcom@localhost:5432/calcom");
+  });
+
+  it("should return explicit CALCOM_DATABASE_URL when set", () => {
+    vi.stubEnv(
+      "CALCOM_DATABASE_URL",
+      "postgresql://user:pass@prod-host:5432/calcom"
+    );
+
+    const value = getEnvVar("CALCOM_DATABASE_URL");
+    expect(value).toBe("postgresql://user:pass@prod-host:5432/calcom");
+  });
+
+  it("should fall back to default when CALCOM_DATABASE_URL is whitespace-only", () => {
+    vi.stubEnv("CALCOM_DATABASE_URL", "   ");
+
+    const value = getEnvVar("CALCOM_DATABASE_URL");
+    expect(value).toBe("postgresql://calcom:calcom@localhost:5432/calcom");
+  });
+});

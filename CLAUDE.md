@@ -38,6 +38,7 @@ src/
 - **ADR-4**: Visual progress indicators for each step of the voice flow.
 - **ADR-5**: Claude system prompt explicitly forbids medical advice, redirects to professionals.
 - **ADR-10**: Application runs on port 3001 to avoid conflicts with Cal.com on port 3000.
+- **ADR-11**: Environment variable configuration for Cal.com integration. CALCOM_DATABASE_URL and CAL_COM_EVENT_TYPE_ID are configured via environment variables documented in .env.example with development defaults.
 
 ## Docker
 - The app runs in Docker: `docker compose up -d` to start, `docker compose down` to stop

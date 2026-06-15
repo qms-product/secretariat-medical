@@ -16,6 +16,7 @@ const REQUIRED_ENV_VARS = [
  */
 const ENV_DEFAULTS: Record<string, string> = {
   CAL_COM_BASE_URL: "http://localhost:3000",
+  CALCOM_DATABASE_URL: "postgresql://calcom:calcom@localhost:5432/calcom",
   PORT: "3001",
 } as const;
 
