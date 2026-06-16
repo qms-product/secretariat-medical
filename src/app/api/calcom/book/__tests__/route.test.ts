@@ -158,6 +158,54 @@ describe("POST /api/calcom/book", () => {
     expect(body.details).toEqual(expect.arrayContaining([expect.stringContaining("email")]));
   });
 
+  it("should return 400 when 'phone' is an invalid French number", async () => {
+    const { POST } = await importRoute();
+
+    const response = await POST(
+      createRequest({ ...validBody, phone: "+1 555 123 4567" })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.details).toEqual(
+      expect.arrayContaining([expect.stringContaining("telephone")])
+    );
+  });
+
+  it("should accept valid French phone numbers", async () => {
+    const { POST } = await importRoute();
+    mockCreateBooking.mockResolvedValueOnce({
+      id: 1,
+      uid: "abc",
+      title: "",
+      startTime: "",
+      endTime: "",
+    });
+
+    const response = await POST(
+      createRequest({ ...validBody, phone: "06 12 34 56 78" })
+    );
+
+    expect(response.status).toBe(201);
+  });
+
+  it("should accept phone with international prefix +33", async () => {
+    const { POST } = await importRoute();
+    mockCreateBooking.mockResolvedValueOnce({
+      id: 1,
+      uid: "abc",
+      title: "",
+      startTime: "",
+      endTime: "",
+    });
+
+    const response = await POST(
+      createRequest({ ...validBody, phone: "+33 6 12 34 56 78" })
+    );
+
+    expect(response.status).toBe(201);
+  });
+
   it("should return 400 when multiple fields are invalid", async () => {
     const { POST } = await importRoute();
 
