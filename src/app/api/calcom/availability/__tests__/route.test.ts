@@ -144,6 +144,39 @@ describe("GET /api/calcom/availability", () => {
     expect(body.slots["2026-06-15"]).toHaveLength(1);
   });
 
+  // AC: Les créneaux sont triés par date/heure croissante
+  it("should return slots sorted by date and time", async () => {
+    const { GET } = await importRoute();
+    const unsortedData = {
+      slots: {
+        "2026-06-17": [
+          { time: "2026-06-17T14:00:00Z" },
+          { time: "2026-06-17T09:00:00Z" },
+        ],
+        "2026-06-15": [
+          { time: "2026-06-15T16:00:00Z" },
+          { time: "2026-06-15T08:00:00Z" },
+        ],
+      },
+    };
+    mockGetAvailability.mockResolvedValueOnce(unsortedData);
+
+    const response = await GET(
+      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-18T00:00:00Z" })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // Dates should be sorted
+    const dates = Object.keys(body.slots);
+    expect(dates).toEqual(["2026-06-15", "2026-06-17"]);
+    // Slots within each date should be sorted by time
+    expect(body.slots["2026-06-15"][0].time).toBe("2026-06-15T08:00:00Z");
+    expect(body.slots["2026-06-15"][1].time).toBe("2026-06-15T16:00:00Z");
+    expect(body.slots["2026-06-17"][0].time).toBe("2026-06-17T09:00:00Z");
+    expect(body.slots["2026-06-17"][1].time).toBe("2026-06-17T14:00:00Z");
+  });
+
   // AC: Gestion erreurs avec codes HTTP appropriés
   it("should return 504 on Cal.com timeout", async () => {
     const { GET } = await importRoute();
