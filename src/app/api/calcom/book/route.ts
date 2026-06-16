@@ -4,16 +4,16 @@ import {
   CalcomApiError,
   CalcomTimeoutError,
 } from "@/lib/calcom";
+import {
+  isValidEmail,
+  isValidFrenchPhone,
+} from "@/lib/patient-validation";
 
 interface BookingRequestBody {
   start: string;
   name: string;
   email: string;
   phone?: string;
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 /**
@@ -65,11 +65,17 @@ export async function POST(request: NextRequest) {
   if (!body.email || typeof body.email !== "string") {
     errors.push("Le champ 'email' est requis");
   } else if (!isValidEmail(body.email)) {
-    errors.push("Le champ 'email' doit etre une adresse email valide");
+    errors.push(
+      "L'adresse email semble invalide. Elle doit etre au format nom@exemple.fr."
+    );
   }
 
   if (body.phone !== undefined && typeof body.phone !== "string") {
     errors.push("Le champ 'phone' doit etre une chaine de caracteres");
+  } else if (body.phone && typeof body.phone === "string" && body.phone.trim() !== "" && !isValidFrenchPhone(body.phone)) {
+    errors.push(
+      "Le numero de telephone semble invalide. Il doit etre un numero francais a 10 chiffres, par exemple 06 12 34 56 78."
+    );
   }
 
   if (errors.length > 0) {
