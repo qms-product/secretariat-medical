@@ -48,7 +48,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getAvailability(startTime, endTime);
-    return NextResponse.json(data);
+
+    // Sort slots by date key, then by time within each date (AC: créneaux triés par date/heure croissante)
+    const sortedSlots: Record<string, { time: string }[]> = {};
+    const sortedDates = Object.keys(data.slots).sort();
+    for (const date of sortedDates) {
+      sortedSlots[date] = [...data.slots[date]].sort(
+        (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
+      );
+    }
+
+    return NextResponse.json({ slots: sortedSlots });
   } catch (error) {
     if (error instanceof CalcomTimeoutError) {
       console.error("Cal.com availability timeout");
