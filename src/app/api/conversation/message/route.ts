@@ -7,6 +7,7 @@ import {
   buildStatePrompt,
   parseStateMarkers,
   ConversationState,
+  isTerminalState,
 } from "@/lib/conversation-state";
 import {
   resolveSlotDetails,
@@ -17,6 +18,7 @@ import {
   VoiceFlowErrorType,
   mapClaudeApiError,
 } from "@/lib/errors";
+import { completeFlowTracking } from "@/lib/flow-duration-monitor";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -144,6 +146,11 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // IMP-37: Complete flow tracking when reaching a terminal state
+    if (isTerminalState(updatedSession.state)) {
+      completeFlowTracking(conversationId, updatedSession.state);
     }
 
     // IMP-34: Generate vocal confirmation when entering BOOKING state
