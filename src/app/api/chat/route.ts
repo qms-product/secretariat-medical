@@ -7,6 +7,8 @@ import {
   VoiceFlowErrorType,
   mapClaudeApiError,
 } from "@/lib/errors";
+import { fetchAvailability } from "@/lib/calcom-availability";
+import type { CalcomAvailabilityResult } from "@/lib/calcom-availability";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -48,13 +50,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // IMP-35: Fetch Cal.com availability from PostgreSQL (best-effort)
+    let calcomAvailability: CalcomAvailabilityResult | undefined;
+    if (process.env.CALCOM_DATABASE_URL) {
+      try {
+        calcomAvailability = await fetchAvailability();
+      } catch (error) {
+        console.error("Failed to fetch Cal.com availability:", error);
+        // Continue without availability — graceful degradation
+      }
+    }
+
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create(
       {
         model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
-        system: buildSystemPrompt(),
+        system: buildSystemPrompt(calcomAvailability),
         messages: messages.map((m: { role: string; content: string }) => ({
           role: m.role as "user" | "assistant",
           content: m.content,

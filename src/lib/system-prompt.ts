@@ -1,4 +1,6 @@
 import { OFFICE_INFO, TIME_SLOTS, type OfficeInfo, type TimeSlot } from "./data";
+import type { CalcomAvailabilityResult } from "./calcom-availability";
+import { formatAvailabilityForPrompt } from "./calcom-availability";
 
 /**
  * Formats fictitious data (planning + administrative) into structured text
@@ -46,13 +48,20 @@ ${occupiedText}`;
  * System prompt for Claude per ADR-5.
  * Explicitly forbids medical advice and restricts responses to administrative info.
  * Injects fictitious context automatically per IMP-6.
+ * Optionally enriched with Cal.com real availability per IMP-35 / REQ-90.
  */
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(
+  calcomAvailability?: CalcomAvailabilityResult
+): string {
   const contexte = formatContexte();
+
+  const availabilitySection = calcomAvailability
+    ? `\n\n${formatAvailabilityForPrompt(calcomAvailability)}`
+    : "";
 
   return `Tu es l'assistant vocal du ${OFFICE_INFO.name}, situe au ${OFFICE_INFO.address}.
 
-${contexte}
+${contexte}${availabilitySection}
 
 INTERDICTION ABSOLUE — CONSEIL MEDICAL :
 Tu ne donnes JAMAIS de conseil medical, de diagnostic, d'avis sur des symptomes, ni de recommandation de traitement, de medicament ou de posologie.
