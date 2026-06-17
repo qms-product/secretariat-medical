@@ -10,6 +10,15 @@ import {
 import { fetchAvailability } from "@/lib/calcom-availability";
 import type { CalcomAvailabilityResult } from "@/lib/calcom-availability";
 import { getSecureLogger } from "@/lib/secure-logger";
+import { validatePatientData } from "@/lib/patient-validation";
+import {
+  getSession,
+  updateSession,
+  parseStateMarkers,
+  ConversationState,
+  MAX_VALIDATION_RETRIES,
+  type ValidationRetryState,
+} from "@/lib/conversation-state";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -79,8 +88,83 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const reply =
+    const rawReply =
       response.content[0].type === "text" ? response.content[0].text : "";
+
+    // IMP-28: Validate patient data during INFO_COLLECTION → CONFIRMATION transitions
+    const { conversationId } = await request
+      .clone()
+      .json()
+      .then((b: { conversationId?: string }) => ({
+        conversationId: b.conversationId,
+      }))
+      .catch(() => ({ conversationId: undefined }));
+
+    let reply = rawReply;
+
+    if (conversationId) {
+      const session = getSession(conversationId);
+      if (session && session.state === ConversationState.INFO_COLLECTION) {
+        const parsed = parseStateMarkers(rawReply);
+
+        // If LLM wants to transition to CONFIRMATION, validate patient data first
+        if (
+          parsed.nextState === ConversationState.CONFIRMATION &&
+          parsed.patientInfo
+        ) {
+          const validationResult = validatePatientData({
+            email: parsed.patientInfo.email,
+            phone: parsed.patientInfo.phone,
+          });
+
+          if (!validationResult.valid) {
+            // Increment retry counters for each failing field
+            const newRetries: ValidationRetryState = {
+              ...session.validationRetries,
+            };
+            for (const error of validationResult.errors) {
+              const field = error.field as keyof ValidationRetryState;
+              if (field in newRetries) {
+                newRetries[field]++;
+              }
+            }
+
+            // Update session with patient info and retries, staying in INFO_COLLECTION
+            updateSession(conversationId, {
+              patientInfo: {
+                ...session.patientInfo,
+                ...parsed.patientInfo,
+              },
+              validationRetries: newRetries,
+            });
+
+            // Build a validation error context for the LLM to reformulate
+            const hasExhaustedRetries = validationResult.errors.some(
+              (e) =>
+                newRetries[e.field as keyof ValidationRetryState] >=
+                MAX_VALIDATION_RETRIES
+            );
+
+            const errorDescriptions = validationResult.errors
+              .map((e) => e.message)
+              .join(" ");
+
+            const correctionHint = hasExhaustedRetries
+              ? `${errorDescriptions} Vous pouvez aussi nous contacter directement au cabinet.`
+              : errorDescriptions;
+
+            // Return the cleaned reply with appended correction prompt
+            reply = `${parsed.cleanReply}\n\n${correctionHint}`;
+
+            return NextResponse.json({
+              reply,
+              conversationId,
+              validationErrors: validationResult.errors,
+            });
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ reply });
   } catch (error) {

@@ -8,6 +8,7 @@
  */
 
 import { OFFICE_INFO } from "./data";
+import { validatePatientData, type ValidationError } from "./patient-validation";
 
 export enum ConversationState {
   GREETING = "GREETING",
@@ -52,12 +53,22 @@ export interface PatientInfo {
   phone?: string;
 }
 
+/** Maximum validation retry attempts before suggesting alternative contact (IMP-28) */
+export const MAX_VALIDATION_RETRIES = 3;
+
+/** Tracks validation retry attempts per field (IMP-28 / ADR-9) */
+export interface ValidationRetryState {
+  email: number;
+  phone: number;
+}
+
 export interface ConversationSession {
   id: string;
   state: ConversationState;
   messages: ConversationMessage[];
   patientInfo: PatientInfo;
   selectedSlot?: string;
+  validationRetries: ValidationRetryState;
   createdAt: number;
   updatedAt: number;
 }
@@ -110,6 +121,7 @@ export function createSession(): ConversationSession {
     state: ConversationState.GREETING,
     messages: [],
     patientInfo: {},
+    validationRetries: { email: 0, phone: 0 },
     createdAt: now,
     updatedAt: now,
   };
@@ -132,7 +144,7 @@ export function getSession(id: string): ConversationSession | undefined {
 
 export function updateSession(
   id: string,
-  updates: Partial<Pick<ConversationSession, "state" | "messages" | "patientInfo" | "selectedSlot">>
+  updates: Partial<Pick<ConversationSession, "state" | "messages" | "patientInfo" | "selectedSlot" | "validationRetries">>
 ): ConversationSession | undefined {
   const session = sessions.get(id);
   if (!session) return undefined;
@@ -149,6 +161,51 @@ export function updateSession(
 
 export function deleteSession(id: string): boolean {
   return sessions.delete(id);
+}
+
+/**
+ * Build validation context for the INFO_COLLECTION state prompt (IMP-28 / ADR-9).
+ * Validates currently collected patient data and generates contextual instructions
+ * for the LLM to produce natural correction prompts.
+ */
+function buildInfoCollectionPrompt(session: ConversationSession): string {
+  const { patientInfo, validationRetries } = session;
+  const validationResult = validatePatientData({
+    email: patientInfo.email,
+    phone: patientInfo.phone,
+  });
+
+  let validationContext = "";
+  if (!validationResult.valid) {
+    const errorLines = validationResult.errors.map((e: ValidationError) => {
+      const field = e.field as keyof ValidationRetryState;
+      const retries = validationRetries[field] ?? 0;
+      const maxReached = retries >= MAX_VALIDATION_RETRIES;
+      return `- ${e.field}: ${e.message} (tentative ${retries + 1}/${MAX_VALIDATION_RETRIES}${maxReached ? " — LIMITE ATTEINTE, propose une alternative" : ""})`;
+    });
+    validationContext = `
+ERREURS DE VALIDATION DETECTEES :
+${errorLines.join("\n")}
+Tu dois demander la correction de ces informations de maniere naturelle et bienveillante.
+`;
+  }
+
+  return `
+ETAT ACTUEL: INFO_COLLECTION
+Creneau selectionne: ${session.selectedSlot ?? "non defini"}
+Informations deja collectees: ${JSON.stringify(session.patientInfo)}
+${validationContext}
+Tu es dans l'etat de collecte d'informations. Tu dois:
+- Collecter le nom complet du patient (si pas encore fourni)
+- Collecter l'email du patient (si pas encore fourni)
+- Collecter le telephone du patient (si pas encore fourni)
+- Valider les informations collectees avant de passer a la confirmation
+- Si une erreur de validation est signalee ci-dessus, demander la correction AVANT de passer a la confirmation
+- Quand toutes les informations sont collectees ET valides, inclure le marqueur:
+  {"next_state": "CONFIRMATION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
+- Si des informations manquent ou sont invalides, rester dans cet etat:
+  {"next_state": "INFO_COLLECTION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
+`;
 }
 
 /**
@@ -188,19 +245,7 @@ Il n'y a plus de creneaux disponibles. Tu dois:
 - Terminer la conversation poliment
 - Ne PAS inclure de marqueur JSON (cet etat est terminal)
 `,
-    [ConversationState.INFO_COLLECTION]: `
-ETAT ACTUEL: INFO_COLLECTION
-Creneau selectionne: ${session.selectedSlot ?? "non defini"}
-Informations deja collectees: ${JSON.stringify(session.patientInfo)}
-Tu es dans l'etat de collecte d'informations. Tu dois:
-- Collecter le nom complet du patient (si pas encore fourni)
-- Collecter l'email du patient (si pas encore fourni)
-- Collecter le telephone du patient (si pas encore fourni)
-- Quand toutes les informations sont collectees, inclure le marqueur:
-  {"next_state": "CONFIRMATION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
-- Si des informations manquent, rester dans cet etat:
-  {"next_state": "INFO_COLLECTION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
-`,
+    [ConversationState.INFO_COLLECTION]: buildInfoCollectionPrompt(session),
     [ConversationState.CONFIRMATION]: `
 ETAT ACTUEL: CONFIRMATION
 Creneau selectionne: ${session.selectedSlot ?? "non defini"}
