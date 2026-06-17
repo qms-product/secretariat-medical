@@ -294,4 +294,41 @@ describe("POST /api/conversation/message", () => {
 
     expect(response.status).toBe(500);
   });
+
+  // IMP-36: Gestion absence créneaux disponibles
+  describe("(IMP-36) No slots available terminal state", () => {
+    it("should return 400 when conversation is in NO_SLOTS_AVAILABLE state", async () => {
+      const noSlotsSession = createSession();
+      updateSession(noSlotsSession.id, {
+        state: ConversationState.NO_SLOTS_AVAILABLE,
+      });
+
+      const response = await POST(
+        createRequest({
+          conversationId: noSlotsSession.id,
+          message: "Encore un message",
+        })
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain("terminee");
+    });
+
+    it("should not call the Claude API for NO_SLOTS_AVAILABLE conversations", async () => {
+      const noSlotsSession = createSession();
+      updateSession(noSlotsSession.id, {
+        state: ConversationState.NO_SLOTS_AVAILABLE,
+      });
+
+      await POST(
+        createRequest({
+          conversationId: noSlotsSession.id,
+          message: "Test",
+        })
+      );
+
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+  });
 });

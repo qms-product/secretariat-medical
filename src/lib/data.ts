@@ -50,6 +50,21 @@ export const OFFICE_INFO: OfficeInfo = {
   ],
 };
 
+/**
+ * Returns available time slots from the given list.
+ * Used to detect when no slots are available (IMP-36 / REQ-93).
+ */
+export function getAvailableSlots(slots: TimeSlot[] = TIME_SLOTS): TimeSlot[] {
+  return slots.filter((s) => s.available);
+}
+
+/**
+ * Returns true if there are no available time slots (IMP-36 / REQ-93).
+ */
+export function hasNoAvailableSlots(slots: TimeSlot[] = TIME_SLOTS): boolean {
+  return getAvailableSlots(slots).length === 0;
+}
+
 export const TIME_SLOTS: TimeSlot[] = [
   {
     id: "slot-1",
