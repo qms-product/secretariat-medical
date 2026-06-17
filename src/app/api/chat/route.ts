@@ -9,6 +9,7 @@ import {
 } from "@/lib/errors";
 import { fetchAvailability } from "@/lib/calcom-availability";
 import type { CalcomAvailabilityResult } from "@/lib/calcom-availability";
+import { getSecureLogger } from "@/lib/secure-logger";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       try {
         calcomAvailability = await fetchAvailability();
       } catch (error) {
-        console.error("Failed to fetch Cal.com availability:", error);
+        getSecureLogger().error("Failed to fetch Cal.com availability:", error);
         // Continue without availability — graceful degradation
       }
     }
@@ -83,8 +84,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ reply });
   } catch (error) {
+    const logger = getSecureLogger();
+
     if (error instanceof Anthropic.APIConnectionTimeoutError) {
-      console.error("Claude API timeout after", CLAUDE_TIMEOUT_MS, "ms");
+      logger.error("Claude API timeout after", CLAUDE_TIMEOUT_MS, "ms");
       const errorInfo =
         VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING].timeout;
       return NextResponse.json({ error: errorInfo }, { status: 504 });
@@ -94,7 +97,7 @@ export async function POST(request: NextRequest) {
       const status = error.status;
       const body =
         typeof error.message === "string" ? error.message : String(error);
-      console.error(`Claude API error [${status}]:`, body);
+      logger.error(`Claude API error [${status}]:`, body);
 
       const errorInfo = mapClaudeApiError(status, body);
 
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errorInfo }, { status: httpStatus });
     }
 
-    console.error("Chat route error:", error);
+    logger.error("Chat route error:", error);
     const errorInfo =
       VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING].default;
     return NextResponse.json({ error: errorInfo }, { status: 500 });

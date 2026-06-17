@@ -4,6 +4,8 @@
  * Configuration via environment variables with sensible defaults.
  */
 
+import { getSecureLogger } from "./secure-logger";
+
 export interface RateLimitConfig {
   /** Maximum requests per window */
   maxRequests: number;
@@ -69,7 +71,7 @@ export class RateLimiter {
     // Check if IP is currently blocked
     if (record.blockedUntil !== null && now < record.blockedUntil) {
       const retryAfterMs = record.blockedUntil - now;
-      console.warn(
+      getSecureLogger().warn(
         `[rate-limit] IP bloquée: ${ip} | Bloquée jusqu'à: ${new Date(record.blockedUntil).toISOString()} | Tentative à: ${new Date(now).toISOString()}`
       );
       return {
@@ -93,7 +95,7 @@ export class RateLimiter {
     // Check if limit exceeded
     if (record.timestamps.length >= this.config.maxRequests) {
       record.blockedUntil = now + this.config.blockDurationMs;
-      console.warn(
+      getSecureLogger().warn(
         `[rate-limit] Limite dépassée: ${ip} | Requêtes: ${record.timestamps.length}/${this.config.maxRequests} | Bloquée pour ${this.config.blockDurationMs}ms | Timestamp: ${new Date(now).toISOString()}`
       );
       return {
