@@ -9,6 +9,10 @@ import {
 } from "@/lib/errors";
 import { fetchAvailability } from "@/lib/calcom-availability";
 import type { CalcomAvailabilityResult } from "@/lib/calcom-availability";
+import {
+  CalcomDatabaseError,
+  getCalcomErrorVoiceResponse,
+} from "@/lib/calcom-db-errors";
 import { getSecureLogger } from "@/lib/secure-logger";
 import { validatePatientData } from "@/lib/patient-validation";
 import {
@@ -60,14 +64,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // IMP-35: Fetch Cal.com availability from PostgreSQL (best-effort)
+    // IMP-35: Fetch Cal.com availability from PostgreSQL
+    // IMP-32: Return voice error response on Cal.com DB failure (ADR-12)
     let calcomAvailability: CalcomAvailabilityResult | undefined;
     if (process.env.CALCOM_DATABASE_URL) {
       try {
         calcomAvailability = await fetchAvailability();
       } catch (error) {
         getSecureLogger().error("Failed to fetch Cal.com availability:", error);
-        // Continue without availability — graceful degradation
+
+        if (error instanceof CalcomDatabaseError) {
+          const voiceReply = getCalcomErrorVoiceResponse(error);
+          return NextResponse.json({
+            reply: voiceReply,
+            calcomError: error.errorInfo,
+          });
+        }
+        // Non-DB errors: continue without availability — graceful degradation
       }
     }
 

@@ -106,6 +106,38 @@ export function classifyPgError(error: unknown): PgErrorType {
 }
 
 /**
+ * Voice response templates for Cal.com database errors (IMP-32 / ADR-12).
+ *
+ * Each template provides a natural French voice message appropriate for TTS
+ * synthesis, inviting the patient to call back later.
+ */
+export const CALCOM_VOICE_RESPONSES: Record<PgErrorType, string> = {
+  [PgErrorType.TIMEOUT]:
+    "Je suis desole, le service de rendez-vous met trop de temps a repondre. Il s'agit d'un probleme temporaire. Je vous invite a rappeler dans quelques instants.",
+  [PgErrorType.CONNECTION_REFUSED]:
+    "Je suis desole, le service de prise de rendez-vous est actuellement indisponible. Je vous invite a rappeler ulterieurement.",
+  [PgErrorType.UNKNOWN]:
+    "Je suis desole, une erreur est survenue avec le service de rendez-vous. Je vous invite a rappeler dans quelques instants.",
+};
+
+/**
+ * Returns the voice response message for a given CalcomDatabaseError.
+ *
+ * Maps the error's PgErrorType to a natural French message suitable for
+ * TTS synthesis, informing the patient and inviting them to call back.
+ *
+ * @param error - The CalcomDatabaseError (or its errorInfo)
+ * @returns A French voice response string ready for TTS conversion
+ */
+export function getCalcomErrorVoiceResponse(
+  error: CalcomDatabaseError | PgErrorInfo
+): string {
+  const errorType =
+    error instanceof CalcomDatabaseError ? error.errorInfo.type : error.type;
+  return CALCOM_VOICE_RESPONSES[errorType];
+}
+
+/**
  * Wraps a database operation with PostgreSQL-specific error handling.
  *
  * Catches errors, classifies them, and throws a CalcomDatabaseError
