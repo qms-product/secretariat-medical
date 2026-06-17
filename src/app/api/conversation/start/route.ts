@@ -16,6 +16,7 @@ import {
   VoiceFlowErrorType,
   mapClaudeApiError,
 } from "@/lib/errors";
+import { startFlowTracking, completeFlowTracking } from "@/lib/flow-duration-monitor";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -35,6 +36,9 @@ export async function POST() {
   try {
     const session = createSession();
 
+    // IMP-37: Start flow duration tracking
+    startFlowTracking(session.id);
+
     // IMP-36: Detect absence of available slots early
     if (hasNoAvailableSlots()) {
       updateSession(session.id, {
@@ -44,6 +48,9 @@ export async function POST() {
           { role: "assistant", content: NO_SLOTS_MESSAGE },
         ],
       });
+
+      // IMP-37: Complete flow tracking for terminal state
+      completeFlowTracking(session.id, ConversationState.NO_SLOTS_AVAILABLE);
 
       return NextResponse.json({
         conversationId: session.id,
