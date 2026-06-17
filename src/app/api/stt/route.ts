@@ -4,6 +4,7 @@ import {
   VoiceFlowErrorType,
   mapElevenLabsSttError,
 } from "@/lib/errors";
+import { getSecureLogger } from "@/lib/secure-logger";
 
 const ELEVENLABS_TIMEOUT_MS = 30_000;
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
+      getSecureLogger().error(
         `ElevenLabs STT error [${response.status}]:`,
         errorText
       );
@@ -86,13 +87,14 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json({ text: data.text });
   } catch (error) {
+    const logger = getSecureLogger();
     if (error instanceof DOMException && error.name === "AbortError") {
-      console.error("ElevenLabs STT timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
+      logger.error("ElevenLabs STT timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
       const errorInfo =
         VOICE_FLOW_ERRORS[VoiceFlowErrorType.STT_TRANSCRIPTION].timeout;
       return NextResponse.json({ error: errorInfo }, { status: 504 });
     }
-    console.error("STT route error:", error);
+    logger.error("STT route error:", error);
     const errorInfo =
       VOICE_FLOW_ERRORS[VoiceFlowErrorType.STT_TRANSCRIPTION].default;
     return NextResponse.json({ error: errorInfo }, { status: 500 });

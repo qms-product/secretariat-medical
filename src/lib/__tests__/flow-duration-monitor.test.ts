@@ -1,4 +1,16 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+
+// Mock the secure-logger module so getSecureLogger returns a logger backed by real console
+vi.mock("../secure-logger", () => ({
+  getSecureLogger: () => ({
+    debug: (...args: unknown[]) => console.log(...args),
+    info: (...args: unknown[]) => console.log(...args),
+    warn: (...args: unknown[]) => console.warn(...args),
+    error: (...args: unknown[]) => console.error(...args),
+  }),
+  _resetSecureLogger: () => {},
+}));
+
 import {
   startFlowTracking,
   completeFlowTracking,

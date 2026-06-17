@@ -19,6 +19,7 @@ import {
   mapClaudeApiError,
 } from "@/lib/errors";
 import { completeFlowTracking } from "@/lib/flow-duration-monitor";
+import { getSecureLogger } from "@/lib/secure-logger";
 
 const CLAUDE_TIMEOUT_MS = 30_000;
 
@@ -171,8 +172,10 @@ export async function POST(request: NextRequest) {
       ...(confirmationText ? { confirmationText } : {}),
     });
   } catch (error) {
+    const logger = getSecureLogger();
+
     if (error instanceof Anthropic.APIConnectionTimeoutError) {
-      console.error("Claude API timeout after", CLAUDE_TIMEOUT_MS, "ms");
+      logger.error("Claude API timeout after", CLAUDE_TIMEOUT_MS, "ms");
       const errorInfo =
         VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING].timeout;
       return NextResponse.json({ error: errorInfo }, { status: 504 });
@@ -182,7 +185,7 @@ export async function POST(request: NextRequest) {
       const status = error.status;
       const body =
         typeof error.message === "string" ? error.message : String(error);
-      console.error(`Claude API error [${status}]:`, body);
+      logger.error(`Claude API error [${status}]:`, body);
       const errorInfo = mapClaudeApiError(status, body);
       const httpStatus =
         status === 429
@@ -196,7 +199,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errorInfo }, { status: httpStatus });
     }
 
-    console.error("Conversation message error:", error);
+    logger.error("Conversation message error:", error);
     const errorInfo =
       VOICE_FLOW_ERRORS[VoiceFlowErrorType.CLAUDE_PROCESSING].default;
     return NextResponse.json({ error: errorInfo }, { status: 500 });

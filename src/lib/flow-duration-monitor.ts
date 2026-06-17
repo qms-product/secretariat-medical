@@ -6,6 +6,8 @@
  * and alerts when flows exceed the 2-minute threshold.
  */
 
+import { getSecureLogger } from "./secure-logger";
+
 /** Maximum acceptable flow duration in milliseconds (REQ-96: 2 minutes) */
 export const FLOW_DURATION_THRESHOLD_MS = 2 * 60 * 1000;
 
@@ -63,7 +65,7 @@ export function startFlowTracking(conversationId: string): FlowTimestamp {
   };
   activeFlows.set(conversationId, record);
 
-  console.log(
+  getSecureLogger().info(
     `[flow-monitor] Flow started: ${conversationId}`
   );
 
@@ -81,7 +83,7 @@ export function completeFlowTracking(
 ): FlowTimestamp | undefined {
   const record = activeFlows.get(conversationId);
   if (!record) {
-    console.warn(
+    getSecureLogger().warn(
       `[flow-monitor] No active flow found for: ${conversationId}`
     );
     return undefined;
@@ -102,12 +104,13 @@ export function completeFlowTracking(
 
   const durationSec = (record.durationMs / 1000).toFixed(1);
 
+  const logger = getSecureLogger();
   if (record.exceededThreshold) {
-    console.warn(
+    logger.warn(
       `[flow-monitor] THRESHOLD EXCEEDED: ${conversationId} took ${durationSec}s (threshold: ${FLOW_DURATION_THRESHOLD_MS / 1000}s, state: ${finalState})`
     );
   } else {
-    console.log(
+    logger.info(
       `[flow-monitor] Flow completed: ${conversationId} in ${durationSec}s (state: ${finalState})`
     );
   }

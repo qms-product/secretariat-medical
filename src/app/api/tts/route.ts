@@ -5,6 +5,7 @@ import {
   mapElevenLabsTtsError,
 } from "@/lib/errors";
 import { TTS_CONFIG, getVoiceId } from "@/lib/tts-config";
+import { getSecureLogger } from "@/lib/secure-logger";
 
 const ELEVENLABS_TIMEOUT_MS = 30_000;
 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
+      getSecureLogger().error(
         `ElevenLabs TTS error [${response.status}]:`,
         errorText
       );
@@ -89,13 +90,14 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const logger = getSecureLogger();
     if (error instanceof DOMException && error.name === "AbortError") {
-      console.error("ElevenLabs TTS timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
+      logger.error("ElevenLabs TTS timeout after", ELEVENLABS_TIMEOUT_MS, "ms");
       const errorInfo =
         VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS].timeout;
       return NextResponse.json({ error: errorInfo }, { status: 504 });
     }
-    console.error("TTS route error:", error);
+    logger.error("TTS route error:", error);
     const errorInfo =
       VOICE_FLOW_ERRORS[VoiceFlowErrorType.TTS_SYNTHESIS].default;
     return NextResponse.json({ error: errorInfo }, { status: 500 });

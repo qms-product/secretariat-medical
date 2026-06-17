@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt } from "@/lib/system-prompt";
+import { getSecureLogger } from "@/lib/secure-logger";
 
 const ANTHROPIC_TIMEOUT_MS = 30_000;
 
@@ -65,13 +66,13 @@ export async function POST(request: NextRequest) {
       (error.name === "AbortError" ||
         ("code" in error && error.code === "ABORT_ERR"))
     ) {
-      console.error("Anthropic API timeout");
+      getSecureLogger().error("Anthropic API timeout");
       return NextResponse.json(
         { error: "Processing service timeout" },
         { status: 504 }
       );
     }
-    console.error("LLM route error:", error);
+    getSecureLogger().error("LLM route error:", error);
     return NextResponse.json(
       { error: "Processing service error" },
       { status: 502 }
