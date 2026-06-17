@@ -9,6 +9,10 @@ import {
   ConversationState,
 } from "@/lib/conversation-state";
 import {
+  resolveSlotDetails,
+  formatAppointmentConfirmation,
+} from "@/lib/appointment-confirmation";
+import {
   VOICE_FLOW_ERRORS,
   VoiceFlowErrorType,
   mapClaudeApiError,
@@ -134,12 +138,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // IMP-34: Generate vocal confirmation when entering BOOKING state
+    let confirmationText: string | undefined;
+    if (updatedSession.state === ConversationState.BOOKING && updatedSession.selectedSlot) {
+      const details = resolveSlotDetails(updatedSession.selectedSlot);
+      if (details) {
+        confirmationText = formatAppointmentConfirmation(details);
+      }
+    }
+
     return NextResponse.json({
       conversationId: updatedSession.id,
       state: updatedSession.state,
-      reply: cleanReply,
+      reply: confirmationText ?? cleanReply,
       patientInfo: updatedSession.patientInfo,
       selectedSlot: updatedSession.selectedSlot,
+      ...(confirmationText ? { confirmationText } : {}),
     });
   } catch (error) {
     if (error instanceof Anthropic.APIConnectionTimeoutError) {
