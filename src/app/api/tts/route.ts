@@ -4,8 +4,8 @@ import {
   VoiceFlowErrorType,
   mapElevenLabsTtsError,
 } from "@/lib/errors";
+import { TTS_CONFIG, getVoiceId } from "@/lib/tts-config";
 
-const ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel - default voice
 const ELEVENLABS_TIMEOUT_MS = 30_000;
 
 /**
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     let response: Response;
     try {
       response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${getVoiceId()}`,
         {
           method: "POST",
           headers: {
@@ -47,10 +47,11 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             text,
-            model_id: "eleven_multilingual_v2",
+            model_id: TTS_CONFIG.modelId,
             voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
+              stability: TTS_CONFIG.voiceSettings.stability,
+              similarity_boost: TTS_CONFIG.voiceSettings.similarity_boost,
+              style: TTS_CONFIG.voiceSettings.style,
             },
           }),
           signal: controller.signal,
