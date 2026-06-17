@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { _clearSessions } from "@/lib/conversation-state";
+import { _clearSessions, ConversationState, NO_SLOTS_MESSAGE } from "@/lib/conversation-state";
+
+const { mockHasNoAvailableSlots } = vi.hoisted(() => {
+  return { mockHasNoAvailableSlots: vi.fn().mockReturnValue(false) };
+});
+
+vi.mock("@/lib/data", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/data")>();
+  return {
+    ...actual,
+    hasNoAvailableSlots: mockHasNoAvailableSlots,
+  };
+});
 
 const { mockCreate, MockAPIConnectionTimeoutError, MockAPIError } = vi.hoisted(
   () => {
@@ -129,5 +141,54 @@ describe("POST /api/conversation/start", () => {
     const response = await POST();
 
     expect(response.status).toBe(500);
+  });
+
+  // IMP-36: Gestion absence créneaux disponibles
+  describe("(IMP-36) No slots available", () => {
+    it("should return NO_SLOTS_AVAILABLE state when no slots are available", async () => {
+      mockHasNoAvailableSlots.mockReturnValueOnce(true);
+
+      const response = await POST();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.state).toBe(ConversationState.NO_SLOTS_AVAILABLE);
+    });
+
+    it("should return a vocal message explaining no slots", async () => {
+      mockHasNoAvailableSlots.mockReturnValueOnce(true);
+
+      const response = await POST();
+      const body = await response.json();
+
+      expect(body.reply).toBe(NO_SLOTS_MESSAGE);
+      expect(body.reply).toContain("plus de creneaux disponibles");
+    });
+
+    it("should orient the patient to an alternative (phone number)", async () => {
+      mockHasNoAvailableSlots.mockReturnValueOnce(true);
+
+      const response = await POST();
+      const body = await response.json();
+
+      expect(body.reply).toContain("01 23 45 67 89");
+    });
+
+    it("should not call the Claude API when no slots are available", async () => {
+      mockHasNoAvailableSlots.mockReturnValueOnce(true);
+
+      await POST();
+
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it("should include a valid conversationId", async () => {
+      mockHasNoAvailableSlots.mockReturnValueOnce(true);
+
+      const response = await POST();
+      const body = await response.json();
+
+      expect(body.conversationId).toMatch(/^conv_/);
+    });
   });
 });

@@ -75,6 +75,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // IMP-36: Block messages in NO_SLOTS_AVAILABLE terminal state
+  if (session.state === ConversationState.NO_SLOTS_AVAILABLE) {
+    return NextResponse.json(
+      { error: "Cette conversation est terminee (aucun creneau disponible)" },
+      { status: 400 }
+    );
+  }
+
   try {
     const systemPrompt =
       buildSystemPrompt() + "\n\n" + buildStatePrompt(session);

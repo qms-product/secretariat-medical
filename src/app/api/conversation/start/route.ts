@@ -8,7 +8,9 @@ import {
   parseStateMarkers,
   updateSession,
   ConversationState,
+  NO_SLOTS_MESSAGE,
 } from "@/lib/conversation-state";
+import { hasNoAvailableSlots } from "@/lib/data";
 import {
   VOICE_FLOW_ERRORS,
   VoiceFlowErrorType,
@@ -32,6 +34,24 @@ export async function POST() {
 
   try {
     const session = createSession();
+
+    // IMP-36: Detect absence of available slots early
+    if (hasNoAvailableSlots()) {
+      updateSession(session.id, {
+        state: ConversationState.NO_SLOTS_AVAILABLE,
+        messages: [
+          { role: "user", content: "Bonjour" },
+          { role: "assistant", content: NO_SLOTS_MESSAGE },
+        ],
+      });
+
+      return NextResponse.json({
+        conversationId: session.id,
+        state: ConversationState.NO_SLOTS_AVAILABLE,
+        reply: NO_SLOTS_MESSAGE,
+        patientInfo: {},
+      });
+    }
 
     const systemPrompt =
       buildSystemPrompt() + "\n\n" + buildStatePrompt(session);

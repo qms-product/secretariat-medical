@@ -1,14 +1,18 @@
 /**
- * Conversation State Manager (ADR-7, IMP-23)
+ * Conversation State Manager (ADR-7, IMP-23, IMP-36)
  *
  * LLM context-based state management with structured system prompts.
  * States: GREETING → SLOT_PROPOSAL → INFO_COLLECTION → CONFIRMATION → BOOKING
+ *         GREETING/SLOT_PROPOSAL → NO_SLOTS_AVAILABLE (terminal, IMP-36)
  * State is maintained in-memory per session.
  */
+
+import { OFFICE_INFO } from "./data";
 
 export enum ConversationState {
   GREETING = "GREETING",
   SLOT_PROPOSAL = "SLOT_PROPOSAL",
+  NO_SLOTS_AVAILABLE = "NO_SLOTS_AVAILABLE",
   INFO_COLLECTION = "INFO_COLLECTION",
   CONFIRMATION = "CONFIRMATION",
   BOOKING = "BOOKING",
@@ -16,11 +20,16 @@ export enum ConversationState {
 
 /** Valid state transitions */
 const STATE_TRANSITIONS: Record<ConversationState, ConversationState[]> = {
-  [ConversationState.GREETING]: [ConversationState.SLOT_PROPOSAL],
+  [ConversationState.GREETING]: [
+    ConversationState.SLOT_PROPOSAL,
+    ConversationState.NO_SLOTS_AVAILABLE,
+  ],
   [ConversationState.SLOT_PROPOSAL]: [
     ConversationState.SLOT_PROPOSAL,
     ConversationState.INFO_COLLECTION,
+    ConversationState.NO_SLOTS_AVAILABLE,
   ],
+  [ConversationState.NO_SLOTS_AVAILABLE]: [],
   [ConversationState.INFO_COLLECTION]: [
     ConversationState.INFO_COLLECTION,
     ConversationState.CONFIRMATION,
@@ -166,6 +175,18 @@ Tu es dans l'etat de proposition de creneaux. Tu dois:
   {"next_state": "INFO_COLLECTION", "selected_slot": "<creneau choisi>"}
 - Si le patient refuse et qu'il reste des creneaux, rester dans cet etat:
   {"next_state": "SLOT_PROPOSAL"}
+- Si tous les creneaux ont ete refuses ou qu'il n'y a plus de creneaux disponibles, inclure le marqueur:
+  {"next_state": "NO_SLOTS_AVAILABLE"}
+`,
+    [ConversationState.NO_SLOTS_AVAILABLE]: `
+ETAT ACTUEL: NO_SLOTS_AVAILABLE
+Il n'y a plus de creneaux disponibles. Tu dois:
+- Informer le patient qu'il n'y a malheureusement plus de creneaux disponibles pour le moment
+- Orienter le patient vers une solution alternative: contacter directement le cabinet au ${OFFICE_INFO.phone}
+- Mentionner les horaires d'ouverture: ${OFFICE_INFO.openingHours}
+- Suggerer de rappeler ulterieurement pour verifier de nouvelles disponibilites
+- Terminer la conversation poliment
+- Ne PAS inclure de marqueur JSON (cet etat est terminal)
 `,
     [ConversationState.INFO_COLLECTION]: `
 ETAT ACTUEL: INFO_COLLECTION
@@ -273,6 +294,19 @@ export function parseStateMarkers(reply: string): {
     .trim();
 
   return result;
+}
+
+/**
+ * Pre-built vocal message for when no slots are available (IMP-36 / REQ-93).
+ * Used as a fallback when the LLM response cannot be obtained or as a direct response.
+ */
+export const NO_SLOTS_MESSAGE = `Nous sommes desoles, il n'y a malheureusement plus de creneaux disponibles pour le moment. Nous vous invitons a contacter directement le cabinet au ${OFFICE_INFO.phone}, du lundi au vendredi de 8 heures a 18 heures, pour verifier de nouvelles disponibilites. Nous vous souhaitons une bonne journee.`;
+
+/**
+ * Checks if the conversation is in a terminal state (IMP-36).
+ */
+export function isTerminalState(state: ConversationState): boolean {
+  return STATE_TRANSITIONS[state].length === 0;
 }
 
 /** Expose for testing */
