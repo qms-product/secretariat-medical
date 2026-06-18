@@ -1,55 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import {
+  CalcomDatabaseError,
+  PG_ERRORS,
+  PgErrorType,
+} from "@/lib/calcom-db-errors";
 
-// Mock the calcom service
-vi.mock("@/lib/calcom", () => ({
-  getAvailability: vi.fn(),
-  CalcomApiError: class CalcomApiError extends Error {
-    constructor(
-      public readonly status: number,
-      public readonly body: string
-    ) {
-      super(`Cal.com API error [${status}]: ${body}`);
-      this.name = "CalcomApiError";
-    }
-  },
-  CalcomTimeoutError: class CalcomTimeoutError extends Error {
-    constructor() {
-      super("Cal.com API request timed out");
-      this.name = "CalcomTimeoutError";
-    }
-  },
+// ─── Mocks ──────────────────────────────────────────────────────────────────
+
+const mockGetAvailabilities = vi.fn();
+const mockGetBookings = vi.fn();
+
+vi.mock("@/lib/calcom-service", () => ({
+  CalcomService: vi.fn().mockImplementation(() => ({
+    getAvailabilities: mockGetAvailabilities,
+    getBookings: mockGetBookings,
+  })),
 }));
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function importRoute() {
   vi.resetModules();
-  // Re-mock after resetModules
-  vi.doMock("@/lib/calcom", () => ({
-    getAvailability: mockGetAvailability,
-    CalcomApiError: MockCalcomApiError,
-    CalcomTimeoutError: MockCalcomTimeoutError,
+  vi.doMock("@/lib/calcom-service", () => ({
+    CalcomService: vi.fn().mockImplementation(() => ({
+      getAvailabilities: mockGetAvailabilities,
+      getBookings: mockGetBookings,
+    })),
   }));
   return await import("../route");
 }
-
-class MockCalcomApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: string
-  ) {
-    super(`Cal.com API error [${status}]: ${body}`);
-    this.name = "CalcomApiError";
-  }
-}
-
-class MockCalcomTimeoutError extends Error {
-  constructor() {
-    super("Cal.com API request timed out");
-    this.name = "CalcomTimeoutError";
-  }
-}
-
-const mockGetAvailability = vi.fn();
 
 function createRequest(params?: Record<string, string>): NextRequest {
   const url = new URL("http://localhost:3001/api/calcom/availability");
@@ -59,42 +39,63 @@ function createRequest(params?: Record<string, string>): NextRequest {
   return new NextRequest(url.toString(), { method: "GET" });
 }
 
-describe("GET /api/calcom/availability", () => {
+const mockAvailabilities = [
+  {
+    id: 1,
+    scheduleId: 1,
+    days: [1, 2, 3, 4, 5],
+    startTime: "09:00",
+    endTime: "17:00",
+  },
+];
+
+const mockBookings = [
+  {
+    id: 1,
+    uid: "uid-1",
+    title: "Consultation - Jean",
+    startTime: new Date("2026-06-15T09:00:00Z"),
+    endTime: new Date("2026-06-15T09:30:00Z"),
+    status: "accepted",
+    eventTypeId: 42,
+    description: null,
+  },
+];
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+describe("GET /api/calcom/availability (PostgreSQL)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.CAL_COM_API_KEY = "test-calcom-key";
     process.env.CAL_COM_EVENT_TYPE_ID = "42";
+    mockGetAvailabilities.mockResolvedValue(mockAvailabilities);
+    mockGetBookings.mockResolvedValue(mockBookings);
   });
 
   afterEach(() => {
-    delete process.env.CAL_COM_API_KEY;
     delete process.env.CAL_COM_EVENT_TYPE_ID;
   });
 
-  // AC: Utilisation exclusive de la clé API serveur
-  it("should return 500 when CAL_COM_API_KEY is not configured", async () => {
-    delete process.env.CAL_COM_API_KEY;
-    const { GET } = await importRoute();
-
-    const response = await GET(createRequest({ startTime: "2026-06-15", endTime: "2026-06-16" }));
-    const body = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(body.error).toBe("CAL_COM_API_KEY not configured");
-  });
+  // ─── Config errors ──────────────────────────────────────────────────
 
   it("should return 500 when CAL_COM_EVENT_TYPE_ID is not configured", async () => {
     delete process.env.CAL_COM_EVENT_TYPE_ID;
     const { GET } = await importRoute();
 
-    const response = await GET(createRequest({ startTime: "2026-06-15", endTime: "2026-06-16" }));
+    const response = await GET(
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
+    );
     const body = await response.json();
 
     expect(response.status).toBe(500);
     expect(body.error).toBe("CAL_COM_EVENT_TYPE_ID not configured");
   });
 
-  // AC: Validation des données avant envoi à Cal.com
+  // ─── Validation ─────────────────────────────────────────────────────
+
   it("should return 400 when startTime is missing", async () => {
     const { GET } = await importRoute();
 
@@ -118,118 +119,125 @@ describe("GET /api/calcom/availability", () => {
   it("should return 400 for invalid date format", async () => {
     const { GET } = await importRoute();
 
-    const response = await GET(createRequest({ startTime: "not-a-date", endTime: "2026-06-16" }));
+    const response = await GET(
+      createRequest({ startTime: "not-a-date", endTime: "2026-06-16" })
+    );
     const body = await response.json();
 
     expect(response.status).toBe(400);
     expect(body.error).toContain("ISO 8601");
   });
 
-  // AC: Route GET /api/calcom/availability retourne créneaux JSON
-  it("should return slots on success", async () => {
+  // ─── Successful response ──────────────────────────────────────────
+
+  it("should return availabilities and bookings on success", async () => {
     const { GET } = await importRoute();
-    const slotsData = {
-      slots: {
-        "2026-06-15": [{ time: "2026-06-15T09:00:00Z" }],
-      },
-    };
-    mockGetAvailability.mockResolvedValueOnce(slotsData);
 
     const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.slots["2026-06-15"]).toHaveLength(1);
+    expect(body.availabilities).toHaveLength(1);
+    expect(body.availabilities[0].days).toEqual([1, 2, 3, 4, 5]);
+    expect(body.bookings).toHaveLength(1);
+    expect(body.bookings[0].startTime).toBe("2026-06-15T09:00:00.000Z");
   });
 
-  // AC: Les créneaux sont triés par date/heure croissante
-  it("should return slots sorted by date and time", async () => {
+  it("should pass scheduleId filter when provided", async () => {
     const { GET } = await importRoute();
-    const unsortedData = {
-      slots: {
-        "2026-06-17": [
-          { time: "2026-06-17T14:00:00Z" },
-          { time: "2026-06-17T09:00:00Z" },
-        ],
-        "2026-06-15": [
-          { time: "2026-06-15T16:00:00Z" },
-          { time: "2026-06-15T08:00:00Z" },
-        ],
-      },
-    };
-    mockGetAvailability.mockResolvedValueOnce(unsortedData);
 
-    const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-18T00:00:00Z" })
+    await GET(
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+        scheduleId: "5",
+      })
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    // Dates should be sorted
-    const dates = Object.keys(body.slots);
-    expect(dates).toEqual(["2026-06-15", "2026-06-17"]);
-    // Slots within each date should be sorted by time
-    expect(body.slots["2026-06-15"][0].time).toBe("2026-06-15T08:00:00Z");
-    expect(body.slots["2026-06-15"][1].time).toBe("2026-06-15T16:00:00Z");
-    expect(body.slots["2026-06-17"][0].time).toBe("2026-06-17T09:00:00Z");
-    expect(body.slots["2026-06-17"][1].time).toBe("2026-06-17T14:00:00Z");
+    expect(mockGetAvailabilities).toHaveBeenCalledWith(5);
   });
 
-  // AC: Gestion erreurs avec codes HTTP appropriés
-  it("should return 504 on Cal.com timeout", async () => {
+  it("should pass date range and eventTypeId to getBookings", async () => {
     const { GET } = await importRoute();
-    mockGetAvailability.mockRejectedValueOnce(new MockCalcomTimeoutError());
+
+    await GET(
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
+    );
+
+    expect(mockGetBookings).toHaveBeenCalledWith({
+      eventTypeId: 42,
+      startAfter: new Date("2026-06-15T00:00:00Z"),
+      startBefore: new Date("2026-06-16T00:00:00Z"),
+    });
+  });
+
+  // ─── Database errors ──────────────────────────────────────────────
+
+  it("should return 504 on database timeout", async () => {
+    const { GET } = await importRoute();
+    mockGetAvailabilities.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.TIMEOUT])
+    );
 
     const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
     );
-    const body = await response.json();
 
     expect(response.status).toBe(504);
-    expect(body.error).toContain("Cal.com");
   });
 
-  it("should return 429 when Cal.com returns rate limit", async () => {
+  it("should return 503 on database connection refused", async () => {
     const { GET } = await importRoute();
-    mockGetAvailability.mockRejectedValueOnce(new MockCalcomApiError(429, "Rate limited"));
-
-    const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+    mockGetAvailabilities.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.CONNECTION_REFUSED])
     );
 
-    expect(response.status).toBe(429);
-  });
-
-  it("should return 503 when Cal.com is unavailable", async () => {
-    const { GET } = await importRoute();
-    mockGetAvailability.mockRejectedValueOnce(new MockCalcomApiError(503, "Service Unavailable"));
-
     const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
     );
 
     expect(response.status).toBe(503);
   });
 
-  it("should return 502 for other Cal.com errors", async () => {
+  it("should return 500 on unknown database error", async () => {
     const { GET } = await importRoute();
-    mockGetAvailability.mockRejectedValueOnce(new MockCalcomApiError(400, "Bad Request"));
-
-    const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+    mockGetAvailabilities.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.UNKNOWN])
     );
 
-    expect(response.status).toBe(502);
+    const response = await GET(
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
+    );
+
+    expect(response.status).toBe(500);
   });
 
   it("should return 500 for unexpected errors", async () => {
     const { GET } = await importRoute();
-    mockGetAvailability.mockRejectedValueOnce(new Error("Unexpected"));
+    mockGetAvailabilities.mockRejectedValueOnce(new Error("Unexpected"));
 
     const response = await GET(
-      createRequest({ startTime: "2026-06-15T00:00:00Z", endTime: "2026-06-16T00:00:00Z" })
+      createRequest({
+        startTime: "2026-06-15T00:00:00Z",
+        endTime: "2026-06-16T00:00:00Z",
+      })
     );
 
     expect(response.status).toBe(500);
