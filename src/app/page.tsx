@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { VoiceFlowErrorType, type VoiceFlowErrorInfo, VOICE_FLOW_ERRORS } from "@/lib/errors";
 import { requestAudioCapture } from "@/lib/audio-capture";
+import { playAudio } from "@/lib/audio-playback";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { ProgressIndicators, type FlowStatus } from "@/components/ProgressIndicators";
 import { TranscriptDisplay } from "@/components/TranscriptDisplay";
@@ -131,23 +132,23 @@ export default function Home() {
       });
       if (!ttsRes.ok) throw new Error("TTS failed");
 
-      // Step 4: Playing audio
+      // Step 4: Playing audio (IMP-18)
       setStatus("playing");
       const audioData = await ttsRes.arrayBuffer();
-      const audioContext = new AudioContext();
-      const audioBuffer = await audioContext.decodeAudioData(audioData);
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-      source.onended = () => setStatus("idle");
-      source.start();
+      const playbackResult = await playAudio(audioData);
+      if (!playbackResult.ok) {
+        setError(playbackResult.error);
+      }
+      setStatus("idle");
     } catch {
       const errorType =
         status === "transcription"
           ? VoiceFlowErrorType.STT_TRANSCRIPTION
           : status === "processing"
             ? VoiceFlowErrorType.CLAUDE_PROCESSING
-            : VoiceFlowErrorType.TTS_SYNTHESIS;
+            : status === "playing"
+              ? VoiceFlowErrorType.AUDIO_PLAYBACK
+              : VoiceFlowErrorType.TTS_SYNTHESIS;
       setError(VOICE_FLOW_ERRORS[errorType].default);
       setStatus("idle");
     }

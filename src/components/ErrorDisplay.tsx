@@ -8,6 +8,7 @@ const STEP_LABELS: Record<VoiceFlowErrorType, string> = {
   [VoiceFlowErrorType.STT_TRANSCRIPTION]: "Transcription",
   [VoiceFlowErrorType.CLAUDE_PROCESSING]: "Traitement",
   [VoiceFlowErrorType.TTS_SYNTHESIS]: "Synthese vocale",
+  [VoiceFlowErrorType.AUDIO_PLAYBACK]: "Lecture audio",
 };
 
 export interface ErrorDisplayProps {

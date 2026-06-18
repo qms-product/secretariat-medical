@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       startTime,
       endTime,
       eventTypeId,
-      description: undefined,
+      description: null,
     });
 
     // INSERT into "Attendee"

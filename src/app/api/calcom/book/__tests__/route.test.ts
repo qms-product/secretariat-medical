@@ -235,7 +235,7 @@ describe("POST /api/calcom/book (PostgreSQL)", () => {
       startTime: new Date("2026-06-15T09:00:00Z"),
       endTime: new Date("2026-06-15T09:30:00Z"),
       eventTypeId: 42,
-      description: undefined,
+      description: null,
     });
   });
 
