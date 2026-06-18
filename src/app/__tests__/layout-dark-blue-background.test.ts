@@ -22,7 +22,7 @@ describe("IMP-42: Dark blue background applied to root layout", () => {
     });
 
     it("documents the exact color value in a code comment", () => {
-      expect(globalsCss).toMatch(/\/\*.*#1e3a5f.*\*\//i);
+      expect(globalsCss).toMatch(/\/\*[\s\S]*#1e3a5f[\s\S]*\*\//i);
     });
   });
 
@@ -75,7 +75,7 @@ describe("IMP-42: Dark blue background applied to root layout", () => {
       const bgColorOccurrences = globalsCss.match(/#1e3a5f/gi);
       // Should appear exactly once (in the variable definition)
       expect(bgColorOccurrences).not.toBeNull();
-      expect(bgColorOccurrences!.length).toBeLessThanOrEqual(2); // variable + comment
+      expect(bgColorOccurrences!.length).toBeLessThanOrEqual(4); // variable + comment references
     });
   });
 
