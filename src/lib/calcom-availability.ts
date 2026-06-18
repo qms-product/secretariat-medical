@@ -94,7 +94,7 @@ export async function fetchAvailability(
       WHERE b."eventTypeId" = $1
         AND b."startTime" >= $2
         AND b."startTime" < $3
-        AND b.status = 'ACCEPTED'
+        AND b.status = 'accepted'
       ORDER BY b."startTime" ASC
     `;
 

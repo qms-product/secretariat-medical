@@ -239,9 +239,16 @@ export class CalcomService {
    */
   async createBooking(input: CreateBookingInput): Promise<CalcomBooking> {
     return withPgErrorHandling(async () => {
+      // Resolve userId from EventType so Cal.com associates the booking with the practitioner
+      const etResult = await this.pool.query(
+        `SELECT "userId" FROM "EventType" WHERE id = $1`,
+        [input.eventTypeId]
+      );
+      const userId = etResult.rows[0]?.userId ?? null;
+
       const result = await this.pool.query(
-        `INSERT INTO "Booking" (uid, title, "startTime", "endTime", "eventTypeId", description, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'ACCEPTED')
+        `INSERT INTO "Booking" (uid, title, "startTime", "endTime", "eventTypeId", "userId", description, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted')
          RETURNING id, uid, title, "startTime", "endTime", status, "eventTypeId", description`,
         [
           input.uid,
@@ -249,6 +256,7 @@ export class CalcomService {
           input.startTime.toISOString(),
           input.endTime.toISOString(),
           input.eventTypeId,
+          userId,
           input.description ?? null,
         ]
       );
@@ -279,9 +287,9 @@ export class CalcomService {
       const locale = input.locale ?? "fr";
 
       const result = await this.pool.query(
-        `INSERT INTO "Attendee" ("bookingId", name, email, phone, "timeZone", locale)
+        `INSERT INTO "Attendee" ("bookingId", name, email, "phoneNumber", "timeZone", locale)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, "bookingId", name, email, phone, "timeZone", locale`,
+         RETURNING id, "bookingId", name, email, "phoneNumber" AS phone, "timeZone", locale`,
         [
           input.bookingId,
           input.name,

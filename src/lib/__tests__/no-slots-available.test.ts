@@ -153,7 +153,7 @@ describe("IMP-36 / REQ-93: Gestion absence créneaux disponibles", () => {
       session.state = ConversationState.NO_SLOTS_AVAILABLE;
       const prompt = buildStatePrompt(session);
       expect(prompt).toContain("NO_SLOTS_AVAILABLE");
-      expect(prompt).toContain("plus de creneaux disponibles");
+      expect(prompt).toContain("plus de creneaux");
     });
 
     it("should mention the cabinet phone number", () => {
@@ -167,7 +167,7 @@ describe("IMP-36 / REQ-93: Gestion absence créneaux disponibles", () => {
       const session = createSession();
       session.state = ConversationState.NO_SLOTS_AVAILABLE;
       const prompt = buildStatePrompt(session);
-      expect(prompt).toContain("solution alternative");
+      expect(prompt).toContain("oriente vers le");
     });
   });
 

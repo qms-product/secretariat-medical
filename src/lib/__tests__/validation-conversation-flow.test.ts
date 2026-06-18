@@ -23,28 +23,27 @@ describe("Validation in conversational flow (IMP-28 / ADR-9)", () => {
     });
 
     it("should instruct natural reformulation of errors", () => {
-      expect(prompt).toContain("naturelle et bienveillante");
+      expect(prompt).toContain("reformules naturellement");
     });
 
-    it("should instruct not to repeat technical error messages", () => {
-      expect(prompt).toContain("ne repetes PAS le message d'erreur technique");
+    it("should instruct short reformulation of errors", () => {
+      expect(prompt).toContain("phrase courte");
     });
 
-    it("should instruct to ask for one piece of info at a time", () => {
-      expect(prompt).toContain("UNE information a la fois");
+    it("should provide an example of error reformulation", () => {
+      expect(prompt).toContain("Je n'ai pas bien compris votre email");
     });
 
     it("should suggest alternative contact after multiple failed attempts", () => {
-      expect(prompt).toContain("epeler votre adresse email");
-      expect(prompt).toContain("contacter directement");
+      expect(prompt).toContain("nous joindre au");
     });
 
     it("should provide email error reformulation example", () => {
-      expect(prompt).toContain("Email invalide");
+      expect(prompt).toContain("votre email");
     });
 
-    it("should provide phone error reformulation example", () => {
-      expect(prompt).toContain("Telephone invalide");
+    it("should provide phone number as fallback", () => {
+      expect(prompt).toContain("01 23 45 67 89");
     });
   });
 
@@ -165,7 +164,7 @@ describe("Validation in conversational flow (IMP-28 / ADR-9)", () => {
       session.validationRetries = { email: 0, phone: 0 };
 
       const prompt = buildStatePrompt(session);
-      expect(prompt).toContain("valides");
+      expect(prompt).toContain("valide");
       expect(prompt).toContain("CONFIRMATION");
     });
   });

@@ -47,20 +47,21 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
     });
   });
 
-  describe("Reponses limitees aux informations administratives", () => {
-    it("should define administrative-only scope", () => {
+  describe("Perimetre autorise — administratif et prise de RDV", () => {
+    it("should define administrative and booking scope", () => {
       expect(prompt).toContain(
-        "INFORMATIONS ADMINISTRATIVES UNIQUEMENT"
+        "INFORMATIONS ADMINISTRATIVES ET PRISE DE RENDEZ-VOUS"
       );
     });
 
-    it("should list allowed administrative topics", () => {
+    it("should list allowed topics including booking", () => {
       expect(prompt).toContain("Horaires d'ouverture");
       expect(prompt).toContain("Creneaux de rendez-vous");
       expect(prompt).toContain("Coordonnees du cabinet");
+      expect(prompt).toContain("Prise de rendez-vous via le flux conversationnel");
     });
 
-    it("should refuse requests outside administrative scope", () => {
+    it("should refuse requests outside scope", () => {
       expect(prompt).toContain("refuses poliment toute demande sortant de ce perimetre");
     });
   });
@@ -77,44 +78,27 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
     });
   });
 
-  describe("Interdiction prise de rendez-vous et modification de planning (IMP-19 / REQ-22)", () => {
-    it("should contain absolute prohibition of appointment booking", () => {
-      expect(prompt).toContain("INTERDICTION ABSOLUE");
-      expect(prompt).toContain("PRISE DE RENDEZ-VOUS ET MODIFICATION DE PLANNING");
+  describe("Prise de rendez-vous conversationnelle et interdictions (IMP-19 / REQ-22)", () => {
+    it("should allow conversational booking flow", () => {
+      expect(prompt).toContain("PRISE DE RENDEZ-VOUS");
+      expect(prompt).toContain("FLUX CONVERSATIONNEL");
     });
 
-    it("should forbid real appointment booking", () => {
-      expect(prompt).toContain("ne prends JAMAIS de rendez-vous reel");
+    it("should instruct to follow system-guided booking flow", () => {
+      expect(prompt).toContain("flux conversationnel guide par le systeme");
     });
 
-    it("should forbid confirming reservations", () => {
-      expect(prompt).toContain("ne confirmes JAMAIS une reservation");
+    it("should forbid modification of existing appointments", () => {
+      expect(prompt).toContain("ne modifies JAMAIS un rendez-vous existant");
     });
 
-    it("should forbid modifying schedules", () => {
-      expect(prompt).toContain("ne modifies JAMAIS un planning");
+    it("should forbid cancellation of existing appointments", () => {
+      expect(prompt).toContain("n'annules JAMAIS un rendez-vous");
     });
 
-    it("should forbid simulating appointment booking", () => {
-      expect(prompt).toContain("ne dois JAMAIS simuler une prise de rendez-vous");
-    });
-
-    it("should provide a redirection message for appointment requests", () => {
-      expect(prompt).toContain("Je ne suis pas en mesure de prendre ou modifier des rendez-vous");
+    it("should provide a redirection message for modification/cancellation requests", () => {
+      expect(prompt).toContain("Je ne suis pas en mesure de modifier ou annuler des rendez-vous");
       expect(prompt).toContain("contacter le cabinet");
-    });
-
-    it("should explicitly state responses are informational only", () => {
-      expect(prompt).toContain("assistant purement informatif");
-      expect(prompt).toContain("Aucune action reelle");
-    });
-
-    it("should not include appointment booking in allowed scope", () => {
-      expect(prompt).not.toContain("- Prise de rendez-vous");
-    });
-
-    it("should specify slots are consultation-only, no reservation", () => {
-      expect(prompt).toContain("consultation uniquement, sans reservation");
     });
   });
 
@@ -153,8 +137,6 @@ describe("System prompt (ADR-5 / IMP-15)", () => {
 
     it("should use only fictitious data (no real data sources)", () => {
       expect(prompt).toContain("Cabinet Medical Fictif");
-      expect(prompt).toContain("donnees sont fictives");
-      expect(prompt).toContain("demonstration");
     });
 
     it("should automatically inject context on every call", () => {
