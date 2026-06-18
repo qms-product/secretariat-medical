@@ -166,13 +166,13 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 600, margin: "0 auto", padding: "2rem" }}>
       <h1>Assistant Vocal - Secretariat Medical</h1>
-      <p style={{ color: "#666", fontSize: "0.875rem" }}>
+      <p style={{ color: "var(--text-color-muted)", fontSize: "0.875rem" }}>
         Données de demonstration
       </p>
 
       <div style={{ margin: "2rem 0" }}>
         {status === "idle" ? (
-          <button onClick={startRecording} style={{ padding: "1rem 2rem", fontSize: "1.1rem" }}>
+          <button onClick={startRecording} style={{ padding: "1rem 2rem", fontSize: "1.1rem", backgroundColor: "#3b82f6", color: "#ffffff", border: "none", borderRadius: 4, cursor: "pointer" }}>
             Appuyer pour parler
           </button>
         ) : status === "capture" ? (

@@ -1,7 +1,8 @@
 :root {
-  /* IMP-42: Dark blue background — #1e3a5f */
+  /* IMP-44: Dark blue background — #1e3a5f (WCAG AA compliant with white text, contrast ratio ~8.5:1) */
   --background-color: #1e3a5f;
   --text-color: #ffffff;
+  --text-color-muted: #cbd5e1;
 }
 
 body {
