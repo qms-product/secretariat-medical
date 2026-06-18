@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAvailability,
-  CalcomApiError,
-  CalcomTimeoutError,
-} from "@/lib/calcom";
+import { CalcomService } from "@/lib/calcom-service";
+import { CalcomDatabaseError } from "@/lib/calcom-db-errors";
 
 /**
  * GET /api/calcom/availability — Fetch available time slots from Cal.com
- * Query params: startTime, endTime (ISO 8601 strings)
- * Returns JSON with available slots. API key stays server-side (REQ-47).
+ *
+ * Uses direct PostgreSQL access (ADR-6) via CalcomService.
+ * Query params:
+ *   - startTime (ISO 8601, required)
+ *   - endTime   (ISO 8601, required)
+ *   - scheduleId (optional, filter by schedule)
+ *
+ * Returns JSON with availabilities and existing bookings so the caller can
+ * compute open slots.
  */
 export async function GET(request: NextRequest) {
-  const apiKey = process.env.CAL_COM_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "CAL_COM_API_KEY not configured" },
-      { status: 500 }
-    );
-  }
-
   const eventTypeId = process.env.CAL_COM_EVENT_TYPE_ID;
   if (!eventTypeId) {
     return NextResponse.json(
@@ -30,6 +26,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const startTime = searchParams.get("startTime");
   const endTime = searchParams.get("endTime");
+  const scheduleId = searchParams.get("scheduleId");
 
   if (!startTime || !endTime) {
     return NextResponse.json(
@@ -41,47 +38,64 @@ export async function GET(request: NextRequest) {
   // Validate ISO 8601 date format
   if (isNaN(Date.parse(startTime)) || isNaN(Date.parse(endTime))) {
     return NextResponse.json(
-      { error: "Les parametres startTime et endTime doivent etre des dates ISO 8601 valides" },
+      {
+        error:
+          "Les parametres startTime et endTime doivent etre des dates ISO 8601 valides",
+      },
       { status: 400 }
     );
   }
 
   try {
-    const data = await getAvailability(startTime, endTime);
+    const service = new CalcomService();
 
-    // Sort slots by date key, then by time within each date (AC: créneaux triés par date/heure croissante)
-    const sortedSlots: Record<string, { time: string }[]> = {};
-    const sortedDates = Object.keys(data.slots).sort();
-    for (const date of sortedDates) {
-      sortedSlots[date] = [...data.slots[date]].sort(
-        (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
-      );
-    }
+    // Fetch schedule availabilities (REQ-103, REQ-105)
+    const availabilities = await service.getAvailabilities(
+      scheduleId ? parseInt(scheduleId, 10) : undefined
+    );
 
-    return NextResponse.json({ slots: sortedSlots });
+    // Fetch existing bookings in the date range (REQ-104)
+    const bookings = await service.getBookings({
+      eventTypeId: parseInt(eventTypeId, 10),
+      startAfter: new Date(startTime),
+      startBefore: new Date(endTime),
+    });
+
+    return NextResponse.json({
+      availabilities,
+      bookings: bookings.map((b) => ({
+        id: b.id,
+        uid: b.uid,
+        title: b.title,
+        startTime: b.startTime.toISOString(),
+        endTime: b.endTime.toISOString(),
+        status: b.status,
+      })),
+    });
   } catch (error) {
-    if (error instanceof CalcomTimeoutError) {
-      console.error("Cal.com availability timeout");
-      return NextResponse.json(
-        { error: "Le service Cal.com ne repond pas. Veuillez reessayer." },
-        { status: 504 }
+    // Handle CalcomDatabaseError (duck-typed for module boundary compatibility)
+    if (
+      error instanceof Error &&
+      error.name === "CalcomDatabaseError" &&
+      "errorInfo" in error
+    ) {
+      const dbError = error as CalcomDatabaseError;
+      console.error(
+        "Cal.com DB error:",
+        dbError.errorInfo.code,
+        dbError.message,
+        "cause:",
+        dbError.cause
       );
-    }
 
-    if (error instanceof CalcomApiError) {
-      console.error(`Cal.com availability error [${error.status}]:`, error.body);
-
-      const httpStatus =
-        error.status === 429
-          ? 429
-          : error.status === 503 || error.status === 502 || error.status === 504
+      const status =
+        dbError.errorInfo.code === "CALCOM_DB_TIMEOUT"
+          ? 504
+          : dbError.errorInfo.code === "CALCOM_DB_CONNECTION_REFUSED"
             ? 503
-            : 502;
+            : 500;
 
-      return NextResponse.json(
-        { error: "Erreur lors de la recuperation des disponibilites" },
-        { status: httpStatus }
-      );
+      return NextResponse.json({ error: dbError.errorInfo.message }, { status });
     }
 
     console.error("Availability route error:", error);
