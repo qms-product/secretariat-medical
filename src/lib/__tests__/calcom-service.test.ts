@@ -323,6 +323,9 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
   describe("createBooking (REQ-106)", () => {
     it("should insert a new booking with date, time, and event type", async () => {
       const service = await createService();
+      // First call: SELECT userId from EventType
+      mockQuery.mockResolvedValueOnce({ rows: [{ userId: 1 }] });
+      // Second call: INSERT INTO Booking
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -331,7 +334,7 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
             title: "Consultation",
             startTime: "2026-06-20T09:00:00.000Z",
             endTime: "2026-06-20T09:30:00.000Z",
-            status: "ACCEPTED",
+            status: "accepted",
             eventTypeId: 1,
             description: null,
           },
@@ -348,10 +351,11 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
 
       expect(result.id).toBe(42);
       expect(result.uid).toBe("new-uid-123");
-      expect(result.status).toBe("ACCEPTED");
+      expect(result.status).toBe("accepted");
       expect(result.startTime).toBeInstanceOf(Date);
 
-      const [query, params] = mockQuery.mock.calls[0];
+      // Second call is the INSERT
+      const [query, params] = mockQuery.mock.calls[1];
       expect(query).toContain("INSERT INTO");
       expect(query).toContain('"Booking"');
       expect(query).toContain("RETURNING");
@@ -359,8 +363,11 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
       expect(params).toContain(1); // eventTypeId
     });
 
-    it("should set status to ACCEPTED by default", async () => {
+    it("should set status to accepted by default", async () => {
       const service = await createService();
+      // SELECT userId
+      mockQuery.mockResolvedValueOnce({ rows: [{ userId: 1 }] });
+      // INSERT
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -369,7 +376,7 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
             title: "Test",
             startTime: "2026-06-20T09:00:00.000Z",
             endTime: "2026-06-20T09:30:00.000Z",
-            status: "ACCEPTED",
+            status: "accepted",
             eventTypeId: 1,
             description: null,
           },
@@ -384,12 +391,16 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
         eventTypeId: 1,
       });
 
-      const query = mockQuery.mock.calls[0][0];
-      expect(query).toContain("'ACCEPTED'");
+      // Second call is the INSERT
+      const query = mockQuery.mock.calls[1][0];
+      expect(query).toContain("'accepted'");
     });
 
     it("should handle optional description", async () => {
       const service = await createService();
+      // SELECT userId
+      mockQuery.mockResolvedValueOnce({ rows: [{ userId: 1 }] });
+      // INSERT
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -398,7 +409,7 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
             title: "Test",
             startTime: "2026-06-20T09:00:00.000Z",
             endTime: "2026-06-20T09:30:00.000Z",
-            status: "ACCEPTED",
+            status: "accepted",
             eventTypeId: 1,
             description: "Note de consultation",
           },
@@ -415,7 +426,8 @@ describe("CalcomService (IMP-20 / ADR-6)", () => {
       });
 
       expect(result.description).toBe("Note de consultation");
-      const params = mockQuery.mock.calls[0][1];
+      // Second call is the INSERT
+      const params = mockQuery.mock.calls[1][1];
       expect(params).toContain("Note de consultation");
     });
   });

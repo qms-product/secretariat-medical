@@ -192,19 +192,14 @@ Tu dois demander la correction de ces informations de maniere naturelle et bienv
 
   return `
 ETAT ACTUEL: INFO_COLLECTION
-Creneau selectionne: ${session.selectedSlot ?? "non defini"}
-Informations deja collectees: ${JSON.stringify(session.patientInfo)}
+Creneau: ${session.selectedSlot ?? "non defini"}
+Deja collecte: ${JSON.stringify(session.patientInfo)}
 ${validationContext}
-Tu es dans l'etat de collecte d'informations. Tu dois:
-- Collecter le nom complet du patient (si pas encore fourni)
-- Collecter l'email du patient (si pas encore fourni)
-- Collecter le telephone du patient (si pas encore fourni)
-- Valider les informations collectees avant de passer a la confirmation
-- Si une erreur de validation est signalee ci-dessus, demander la correction AVANT de passer a la confirmation
-- Quand toutes les informations sont collectees ET valides, inclure le marqueur:
-  {"next_state": "CONFIRMATION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
-- Si des informations manquent ou sont invalides, rester dans cet etat:
-  {"next_state": "INFO_COLLECTION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
+Collecte nom, email et telephone. Demande UNE info a la fois en une phrase courte. Exemple : "Et votre email ?"
+Si tout est collecte et valide :
+{"next_state": "CONFIRMATION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
+Sinon, reste dans cet etat :
+{"next_state": "INFO_COLLECTION", "patient_info": {"name": "...", "email": "...", "phone": "..."}}
 `;
 }
 
@@ -216,61 +211,41 @@ export function buildStatePrompt(session: ConversationSession): string {
   const stateInstructions: Record<ConversationState, string> = {
     [ConversationState.GREETING]: `
 ETAT ACTUEL: GREETING
-Tu es dans l'etat d'accueil. Tu dois:
-- Saluer le patient chaleureusement en francais
-- Te presenter comme l'assistant vocal du cabinet medical
-- Expliquer que tu peux aider a prendre un rendez-vous
-- Inclure dans ta reponse le marqueur JSON suivant sur une ligne separee:
-  {"next_state": "SLOT_PROPOSAL"}
+Accueille le patient en une phrase courte. Exemple : "Bonjour, cabinet Saint-Martin, je vous ecoute."
+Ajoute le marqueur sur une ligne separee :
+{"next_state": "SLOT_PROPOSAL"}
 `,
     [ConversationState.SLOT_PROPOSAL]: `
 ETAT ACTUEL: SLOT_PROPOSAL
-Tu es dans l'etat de proposition de creneaux. Tu dois:
-- Proposer le prochain creneau disponible au patient
-- Si le patient refuse, proposer le creneau suivant
-- Si le patient accepte un creneau, inclure le marqueur:
-  {"next_state": "INFO_COLLECTION", "selected_slot": "<creneau choisi>"}
-- Si le patient refuse et qu'il reste des creneaux, rester dans cet etat:
-  {"next_state": "SLOT_PROPOSAL"}
-- Si tous les creneaux ont ete refuses ou qu'il n'y a plus de creneaux disponibles, inclure le marqueur:
-  {"next_state": "NO_SLOTS_AVAILABLE"}
+Propose un creneau disponible en une phrase. Si le patient accepte :
+{"next_state": "INFO_COLLECTION", "selected_slot": "<creneau choisi>"}
+Si le patient refuse, propose le suivant :
+{"next_state": "SLOT_PROPOSAL"}
+Si plus aucun creneau :
+{"next_state": "NO_SLOTS_AVAILABLE"}
 `,
     [ConversationState.NO_SLOTS_AVAILABLE]: `
 ETAT ACTUEL: NO_SLOTS_AVAILABLE
-Il n'y a plus de creneaux disponibles. Tu dois:
-- Informer le patient qu'il n'y a malheureusement plus de creneaux disponibles pour le moment
-- Orienter le patient vers une solution alternative: contacter directement le cabinet au ${OFFICE_INFO.phone}
-- Mentionner les horaires d'ouverture: ${OFFICE_INFO.openingHours}
-- Suggerer de rappeler ulterieurement pour verifier de nouvelles disponibilites
-- Terminer la conversation poliment
-- Ne PAS inclure de marqueur JSON (cet etat est terminal)
+Dis en une phrase qu'il n'y a plus de creneaux et oriente vers le ${OFFICE_INFO.phone}. Pas de marqueur JSON.
 `,
     [ConversationState.INFO_COLLECTION]: buildInfoCollectionPrompt(session),
     [ConversationState.CONFIRMATION]: `
 ETAT ACTUEL: CONFIRMATION
-Creneau selectionne: ${session.selectedSlot ?? "non defini"}
-Informations patient: ${JSON.stringify(session.patientInfo)}
-Tu es dans l'etat de confirmation. Tu dois:
-- Recapituler la date, l'heure, le nom, l'email et le telephone
-- Demander au patient de confirmer
-- Si le patient confirme, inclure le marqueur:
-  {"next_state": "BOOKING"}
-- Si le patient souhaite modifier, revenir a la proposition:
-  {"next_state": "SLOT_PROPOSAL"}
+Creneau: ${session.selectedSlot ?? "non defini"}
+Patient: ${JSON.stringify(session.patientInfo)}
+Recapitule en texte brut (pas de listes) : date, heure, nom, email, telephone. Demande confirmation en une phrase.
+Si oui : {"next_state": "BOOKING"}
+Si non : {"next_state": "SLOT_PROPOSAL"}
 `,
     [ConversationState.BOOKING]: `
 ETAT ACTUEL: BOOKING
-Creneau selectionne: ${session.selectedSlot ?? "non defini"}
-Informations patient: ${JSON.stringify(session.patientInfo)}
-Tu es dans l'etat de creation du rendez-vous. Tu dois:
-- Confirmer vocalement la creation du rendez-vous
-- Indiquer la date, l'heure et le praticien
-- Remercier le patient
-Note: La creation effective du booking sera geree par le systeme.
+Le systeme cree le rendez-vous. Confirme simplement en une phrase avec la date et le medecin, puis souhaite bonne journee.
 `,
   };
 
-  return stateInstructions[session.state] ?? "";
+  const jsonRule = `MARQUEURS JSON : ecris-les sur une ligne separee, en texte brut. JAMAIS dans un bloc markdown, jamais entre \`\`\`.`;
+  const instruction = stateInstructions[session.state] ?? "";
+  return instruction ? `${jsonRule}\n${instruction}` : "";
 }
 
 /**
@@ -290,35 +265,21 @@ export function parseStateMarkers(reply: string): {
     selectedSlot?: string;
   } = { cleanReply: reply };
 
-  // Match JSON markers on their own line
-  const markerRegex = /\n?\s*\{"next_state"\s*:\s*"([^"]+)"(?:,\s*"selected_slot"\s*:\s*"([^"]*)")?(?:,\s*"patient_info"\s*:\s*(\{[^}]*\}))?\}\s*\n?/g;
+  // Pattern that matches JSON objects containing "next_state", allowing one level of nested braces
+  // (needed for patient_info: {"name": "...", "email": "...", "phone": "..."})
+  const NESTED_JSON = /\{(?:[^{}]|\{[^{}]*\})*"next_state"(?:[^{}]|\{[^{}]*\})*\}/g;
 
-  let match: RegExpExecArray | null;
-  while ((match = markerRegex.exec(reply)) !== null) {
-    const stateCandidate = match[1];
-    if (isValidState(stateCandidate)) {
-      result.nextState = stateCandidate;
-    }
+  // Pre-process: unwrap backtick/code-block wrapped markers so regexes can find them
+  const normalized = reply
+    .replace(new RegExp("```json?\\s*\\n?\\s*(" + NESTED_JSON.source + ")\\s*\\n?\\s*```", "g"), "$1")
+    .replace(new RegExp("`(" + NESTED_JSON.source + ")`", "g"), "$1");
 
-    if (match[2]) {
-      result.selectedSlot = match[2];
-    }
-
-    if (match[3]) {
-      try {
-        result.patientInfo = JSON.parse(match[3]);
-      } catch {
-        // Ignore malformed patient info JSON
-      }
-    }
-  }
-
-  // Also try a broader JSON pattern for more complex markers
-  const broadRegex = /\n?\s*(\{[^{}]*"next_state"[^{}]*\})\s*\n?/g;
-  let broadMatch: RegExpExecArray | null;
-  while ((broadMatch = broadRegex.exec(reply)) !== null) {
+  // Extract all JSON marker objects from the normalized text
+  let jsonMatch: RegExpExecArray | null;
+  const extractRegex = new RegExp(NESTED_JSON.source, "g");
+  while ((jsonMatch = extractRegex.exec(normalized)) !== null) {
     try {
-      const parsed = JSON.parse(broadMatch[1]);
+      const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.next_state && isValidState(parsed.next_state)) {
         result.nextState = parsed.next_state;
       }
@@ -333,9 +294,17 @@ export function parseStateMarkers(reply: string): {
     }
   }
 
-  // Remove all JSON markers from the reply
+  // Remove all JSON markers from the reply, including markdown code blocks and backtick wrapping
+  const NESTED_JSON_SRC = NESTED_JSON.source;
   result.cleanReply = reply
-    .replace(/\n?\s*\{[^{}]*"next_state"[^{}]*\}\s*\n?/g, "\n")
+    // Triple-backtick blocks containing markers
+    .replace(new RegExp("\\n?\\s*```json?\\s*\\n?\\s*" + NESTED_JSON_SRC + "\\s*\\n?\\s*```\\s*\\n?", "g"), "\n")
+    // Empty triple-backtick blocks
+    .replace(/\n?\s*```json?\s*\n?\s*```\s*\n?/g, "\n")
+    // Single backtick-wrapped markers
+    .replace(new RegExp("\\n?\\s*`" + NESTED_JSON_SRC + "`\\s*\\n?", "g"), "\n")
+    // Plain JSON markers (with possible nested braces)
+    .replace(new RegExp("\\n?\\s*" + NESTED_JSON_SRC + "\\s*\\n?", "g"), "\n")
     .trim();
 
   return result;

@@ -1,43 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createBooking,
-  CalcomApiError,
-  CalcomTimeoutError,
-} from "@/lib/calcom";
+import { CalcomService } from "@/lib/calcom-service";
+import { CalcomDatabaseError } from "@/lib/calcom-db-errors";
 import {
   isValidEmail,
   isValidFrenchPhone,
 } from "@/lib/patient-validation";
-
 interface BookingRequestBody {
   start: string;
   name: string;
   email: string;
   phone?: string;
+  eventTypeId?: number;
 }
 
 /**
- * POST /api/calcom/book — Create a booking in Cal.com
- * Body: { start, name, email, phone? }
- * Returns booking confirmation. API key stays server-side (REQ-47).
+ * POST /api/calcom/book — Create a booking via direct PostgreSQL insert.
+ *
+ * Body: { start, name, email, phone?, eventTypeId? }
+ *
+ * Inserts into Cal.com "Booking" + "Attendee" tables directly (ADR-6).
+ * Falls back to CAL_COM_EVENT_TYPE_ID env var if eventTypeId not in body.
  * Patient data transits server-side only (REQ-54).
  */
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.CAL_COM_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "CAL_COM_API_KEY not configured" },
-      { status: 500 }
-    );
-  }
-
-  const eventTypeId = process.env.CAL_COM_EVENT_TYPE_ID;
-  if (!eventTypeId) {
-    return NextResponse.json(
-      { error: "CAL_COM_EVENT_TYPE_ID not configured" },
-      { status: 500 }
-    );
-  }
+  const defaultEventTypeId = process.env.CAL_COM_EVENT_TYPE_ID;
 
   let body: BookingRequestBody;
   try {
@@ -49,7 +35,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Validate required fields
+  // Resolve event type ID: body override or env default
+  const eventTypeId = body.eventTypeId ?? (defaultEventTypeId ? parseInt(defaultEventTypeId, 10) : undefined);
+  if (!eventTypeId || isNaN(eventTypeId)) {
+    return NextResponse.json(
+      { error: "CAL_COM_EVENT_TYPE_ID not configured" },
+      { status: 500 }
+    );
+  }
+
+  // ─── Validate input ────────────────────────────────────────────────
   const errors: string[] = [];
 
   if (!body.start || typeof body.start !== "string") {
@@ -85,45 +80,74 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ─── Create booking + attendee via PostgreSQL ─────────────────────
   try {
-    const data = await createBooking({
-      eventTypeId: parseInt(eventTypeId, 10),
-      start: body.start,
-      name: body.name.trim(),
-      email: body.email.trim(),
-      phone: body.phone?.trim(),
-    });
+    const service = new CalcomService();
 
-    return NextResponse.json(data, { status: 201 });
-  } catch (error) {
-    if (error instanceof CalcomTimeoutError) {
-      console.error("Cal.com booking timeout");
+    // Fetch event type to get duration for endTime calculation
+    const eventTypes = await service.getEventTypes();
+    const eventType = eventTypes.find((et) => et.id === eventTypeId);
+    if (!eventType) {
       return NextResponse.json(
-        { error: "Le service Cal.com ne repond pas. Veuillez reessayer." },
-        { status: 504 }
+        { error: `Type d'evenement introuvable (id=${eventTypeId})` },
+        { status: 404 }
       );
     }
 
-    if (error instanceof CalcomApiError) {
-      console.error(`Cal.com booking error [${error.status}]:`, error.body);
+    const startTime = new Date(body.start);
+    const endTime = new Date(startTime.getTime() + eventType.length * 60_000);
+    const uid = crypto.randomUUID();
 
-      if (error.status === 409) {
-        return NextResponse.json(
-          { error: "Ce creneau n'est plus disponible" },
-          { status: 409 }
-        );
-      }
+    // INSERT into "Booking"
+    const booking = await service.createBooking({
+      uid,
+      title: `${eventType.title} - ${body.name.trim()}`,
+      startTime,
+      endTime,
+      eventTypeId,
+      description: null,
+    });
 
-      const httpStatus =
-        error.status === 429
-          ? 429
-          : error.status === 503 || error.status === 502 || error.status === 504
-            ? 503
-            : 502;
+    // INSERT into "Attendee"
+    await service.createAttendee({
+      bookingId: booking.id,
+      name: body.name.trim(),
+      email: body.email.trim(),
+      phone: body.phone?.trim(),
+      timeZone: "Europe/Paris",
+      locale: "fr",
+    });
+
+    return NextResponse.json(
+      {
+        id: booking.id,
+        uid: booking.uid,
+        title: booking.title,
+        startTime: booking.startTime.toISOString(),
+        endTime: booking.endTime.toISOString(),
+        status: booking.status,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    // Duck-type CalcomDatabaseError (name + errorInfo) to avoid instanceof
+    // issues across module boundaries in tests.
+    if (
+      error instanceof Error &&
+      error.name === "CalcomDatabaseError" &&
+      "errorInfo" in error
+    ) {
+      const dbError = error as CalcomDatabaseError;
+      console.error("Cal.com DB error:", dbError.errorInfo.code, dbError.message, "cause:", dbError.cause);
+
+      const status =
+        dbError.errorInfo.code === "CALCOM_DB_TIMEOUT" ? 504 :
+        dbError.errorInfo.code === "CALCOM_DB_CONNECTION_REFUSED" ? 503 :
+        500;
 
       return NextResponse.json(
-        { error: "Erreur lors de la creation du rendez-vous" },
-        { status: httpStatus }
+        { error: dbError.errorInfo.message },
+        { status }
       );
     }
 

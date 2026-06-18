@@ -1,42 +1,41 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import { CalcomDatabaseError, PG_ERRORS, PgErrorType } from "@/lib/calcom-db-errors";
 
-class MockCalcomApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: string
-  ) {
-    super(`Cal.com API error [${status}]: ${body}`);
-    this.name = "CalcomApiError";
-  }
-}
+// ─── Mocks ──────────────────────────────────────────────────────────────────
 
-class MockCalcomTimeoutError extends Error {
-  constructor() {
-    super("Cal.com API request timed out");
-    this.name = "CalcomTimeoutError";
-  }
-}
-
+const mockGetEventTypes = vi.fn();
 const mockCreateBooking = vi.fn();
+const mockCreateAttendee = vi.fn();
+
+vi.mock("@/lib/calcom-service", () => ({
+  CalcomService: vi.fn().mockImplementation(() => ({
+    getEventTypes: mockGetEventTypes,
+    createBooking: mockCreateBooking,
+    createAttendee: mockCreateAttendee,
+  })),
+}));
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function importRoute() {
   vi.resetModules();
-  vi.doMock("@/lib/calcom", () => ({
-    createBooking: mockCreateBooking,
-    CalcomApiError: MockCalcomApiError,
-    CalcomTimeoutError: MockCalcomTimeoutError,
+  vi.doMock("@/lib/calcom-service", () => ({
+    CalcomService: vi.fn().mockImplementation(() => ({
+      getEventTypes: mockGetEventTypes,
+      createBooking: mockCreateBooking,
+      createAttendee: mockCreateAttendee,
+    })),
   }));
   return await import("../route");
 }
 
 function createRequest(body: unknown): NextRequest {
-  const request = new NextRequest("http://localhost:3001/api/calcom/book", {
+  return new NextRequest("http://localhost:3001/api/calcom/book", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return request;
 }
 
 function createInvalidJsonRequest(): NextRequest {
@@ -54,29 +53,52 @@ const validBody = {
   phone: "+33612345678",
 };
 
-describe("POST /api/calcom/book", () => {
+const mockEventTypes = [
+  { id: 42, title: "Consultation", slug: "consultation", length: 30, description: "Consultation generale" },
+];
+
+const mockBookingResult = {
+  id: 1,
+  uid: "test-uuid-1234",
+  title: "Consultation - Jean Dupont",
+  startTime: new Date("2026-06-15T09:00:00Z"),
+  endTime: new Date("2026-06-15T09:30:00Z"),
+  status: "accepted",
+  eventTypeId: 42,
+  description: null,
+};
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+describe("POST /api/calcom/book (PostgreSQL)", () => {
+  const originalRandomUUID = crypto.randomUUID;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.CAL_COM_API_KEY = "test-calcom-key";
     process.env.CAL_COM_EVENT_TYPE_ID = "42";
+
+    // Stub crypto.randomUUID for deterministic UIDs
+    crypto.randomUUID = () => "test-uuid-1234" as ReturnType<typeof crypto.randomUUID>;
+
+    mockGetEventTypes.mockResolvedValue(mockEventTypes);
+    mockCreateBooking.mockResolvedValue(mockBookingResult);
+    mockCreateAttendee.mockResolvedValue({
+      id: 1,
+      bookingId: 1,
+      name: "Jean Dupont",
+      email: "jean@example.com",
+      phone: "+33612345678",
+      timeZone: "Europe/Paris",
+      locale: "fr",
+    });
   });
 
   afterEach(() => {
-    delete process.env.CAL_COM_API_KEY;
     delete process.env.CAL_COM_EVENT_TYPE_ID;
+    crypto.randomUUID = originalRandomUUID;
   });
 
-  // AC: Utilisation exclusive de la clé API serveur
-  it("should return 500 when CAL_COM_API_KEY is not configured", async () => {
-    delete process.env.CAL_COM_API_KEY;
-    const { POST } = await importRoute();
-
-    const response = await POST(createRequest(validBody));
-    const body = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(body.error).toBe("CAL_COM_API_KEY not configured");
-  });
+  // ─── Config errors ──────────────────────────────────────────────────
 
   it("should return 500 when CAL_COM_EVENT_TYPE_ID is not configured", async () => {
     delete process.env.CAL_COM_EVENT_TYPE_ID;
@@ -89,6 +111,8 @@ describe("POST /api/calcom/book", () => {
     expect(body.error).toBe("CAL_COM_EVENT_TYPE_ID not configured");
   });
 
+  // ─── JSON parse errors ──────────────────────────────────────────────
+
   it("should return 400 for invalid JSON body", async () => {
     const { POST } = await importRoute();
 
@@ -99,7 +123,8 @@ describe("POST /api/calcom/book", () => {
     expect(body.error).toContain("JSON");
   });
 
-  // AC: Validation des données avant envoi à Cal.com
+  // ─── Validation ─────────────────────────────────────────────────────
+
   it("should return 400 when 'start' is missing", async () => {
     const { POST } = await importRoute();
 
@@ -172,40 +197,6 @@ describe("POST /api/calcom/book", () => {
     );
   });
 
-  it("should accept valid French phone numbers", async () => {
-    const { POST } = await importRoute();
-    mockCreateBooking.mockResolvedValueOnce({
-      id: 1,
-      uid: "abc",
-      title: "",
-      startTime: "",
-      endTime: "",
-    });
-
-    const response = await POST(
-      createRequest({ ...validBody, phone: "06 12 34 56 78" })
-    );
-
-    expect(response.status).toBe(201);
-  });
-
-  it("should accept phone with international prefix +33", async () => {
-    const { POST } = await importRoute();
-    mockCreateBooking.mockResolvedValueOnce({
-      id: 1,
-      uid: "abc",
-      title: "",
-      startTime: "",
-      endTime: "",
-    });
-
-    const response = await POST(
-      createRequest({ ...validBody, phone: "+33 6 12 34 56 78" })
-    );
-
-    expect(response.status).toBe(201);
-  });
-
   it("should return 400 when multiple fields are invalid", async () => {
     const { POST } = await importRoute();
 
@@ -216,104 +207,160 @@ describe("POST /api/calcom/book", () => {
     expect(body.details.length).toBeGreaterThanOrEqual(3);
   });
 
-  // AC: Route POST /api/calcom/book accepte données patient et crée booking
+  // ─── Successful booking ─────────────────────────────────────────────
+
   it("should return 201 with booking data on success", async () => {
     const { POST } = await importRoute();
-    const bookingData = {
-      id: 1,
-      uid: "abc-123",
-      title: "Consultation",
-      startTime: "2026-06-15T09:00:00Z",
-      endTime: "2026-06-15T09:30:00Z",
-    };
-    mockCreateBooking.mockResolvedValueOnce(bookingData);
 
     const response = await POST(createRequest(validBody));
     const body = await response.json();
 
     expect(response.status).toBe(201);
     expect(body.id).toBe(1);
-    expect(body.uid).toBe("abc-123");
+    expect(body.uid).toBe("test-uuid-1234");
+    expect(body.title).toBe("Consultation - Jean Dupont");
+    expect(body.startTime).toBe("2026-06-15T09:00:00.000Z");
+    expect(body.endTime).toBe("2026-06-15T09:30:00.000Z");
+    expect(body.status).toBe("accepted");
   });
 
-  it("should pass correct data to createBooking service", async () => {
+  it("should call createBooking with correct parameters", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockResolvedValueOnce({ id: 1, uid: "abc", title: "", startTime: "", endTime: "" });
 
     await POST(createRequest(validBody));
 
     expect(mockCreateBooking).toHaveBeenCalledWith({
+      uid: "test-uuid-1234",
+      title: "Consultation - Jean Dupont",
+      startTime: new Date("2026-06-15T09:00:00Z"),
+      endTime: new Date("2026-06-15T09:30:00Z"),
       eventTypeId: 42,
-      start: "2026-06-15T09:00:00Z",
-      name: "Jean Dupont",
-      email: "jean@example.com",
-      phone: "+33612345678",
+      description: null,
     });
   });
 
-  it("should accept request without optional phone field", async () => {
+  it("should call createAttendee with correct parameters", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockResolvedValueOnce({ id: 1, uid: "abc", title: "", startTime: "", endTime: "" });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { phone, ...bodyWithoutPhone } = validBody;
-    const response = await POST(createRequest(bodyWithoutPhone));
+    await POST(createRequest(validBody));
+
+    expect(mockCreateAttendee).toHaveBeenCalledWith({
+      bookingId: 1,
+      name: "Jean Dupont",
+      email: "jean@example.com",
+      phone: "+33612345678",
+      timeZone: "Europe/Paris",
+      locale: "fr",
+    });
+  });
+
+  it("should accept valid French phone numbers", async () => {
+    const { POST } = await importRoute();
+
+    const response = await POST(
+      createRequest({ ...validBody, phone: "06 12 34 56 78" })
+    );
 
     expect(response.status).toBe(201);
   });
 
-  // AC: Gestion erreurs avec codes HTTP appropriés
-  it("should return 504 on Cal.com timeout", async () => {
+  it("should accept phone with international prefix +33", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new MockCalcomTimeoutError());
+
+    const response = await POST(
+      createRequest({ ...validBody, phone: "+33 6 12 34 56 78" })
+    );
+
+    expect(response.status).toBe(201);
+  });
+
+  it("should accept request without optional phone field", async () => {
+    const { POST } = await importRoute();
+
+    const { phone: _, ...bodyWithoutPhone } = validBody;
+    const response = await POST(createRequest(bodyWithoutPhone));
+
+    expect(response.status).toBe(201);
+    expect(mockCreateAttendee).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: undefined })
+    );
+  });
+
+  it("should use eventTypeId from body when provided", async () => {
+    const { POST } = await importRoute();
+    const eventType99 = { id: 99, title: "Suivi", slug: "suivi", length: 15, description: null };
+    mockGetEventTypes.mockResolvedValueOnce([...mockEventTypes, eventType99]);
+    mockCreateBooking.mockResolvedValueOnce({
+      ...mockBookingResult,
+      eventTypeId: 99,
+      title: "Suivi - Jean Dupont",
+      endTime: new Date("2026-06-15T09:15:00Z"),
+    });
+
+    const response = await POST(
+      createRequest({ ...validBody, eventTypeId: 99 })
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockCreateBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ eventTypeId: 99 })
+    );
+  });
+
+  // ─── Event type not found ──────────────────────────────────────────
+
+  it("should return 404 when event type is not found", async () => {
+    const { POST } = await importRoute();
+    mockGetEventTypes.mockResolvedValueOnce([]);
 
     const response = await POST(createRequest(validBody));
     const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toContain("introuvable");
+  });
+
+  // ─── Database errors ───────────────────────────────────────────────
+
+  it("should return 504 on database timeout", async () => {
+    const { POST } = await importRoute();
+    mockGetEventTypes.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.TIMEOUT])
+    );
+
+    const response = await POST(createRequest(validBody));
 
     expect(response.status).toBe(504);
-    expect(body.error).toContain("Cal.com");
   });
 
-  it("should return 409 when slot is no longer available", async () => {
+  it("should return 503 on database connection refused", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new MockCalcomApiError(409, "Conflict"));
+    mockGetEventTypes.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.CONNECTION_REFUSED])
+    );
 
     const response = await POST(createRequest(validBody));
-    const body = await response.json();
 
-    expect(response.status).toBe(409);
-    expect(body.error).toContain("disponible");
-  });
-
-  it("should return 429 on rate limit", async () => {
-    const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new MockCalcomApiError(429, "Rate limited"));
-
-    const response = await POST(createRequest(validBody));
-    expect(response.status).toBe(429);
-  });
-
-  it("should return 503 when Cal.com is unavailable", async () => {
-    const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new MockCalcomApiError(503, "Service Unavailable"));
-
-    const response = await POST(createRequest(validBody));
     expect(response.status).toBe(503);
   });
 
-  it("should return 502 for other Cal.com errors", async () => {
+  it("should return 500 on unknown database error", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new MockCalcomApiError(400, "Bad Request"));
+    mockGetEventTypes.mockRejectedValueOnce(
+      new CalcomDatabaseError(PG_ERRORS[PgErrorType.UNKNOWN])
+    );
 
     const response = await POST(createRequest(validBody));
-    expect(response.status).toBe(502);
+
+    expect(response.status).toBe(500);
   });
 
   it("should return 500 for unexpected errors", async () => {
     const { POST } = await importRoute();
-    mockCreateBooking.mockRejectedValueOnce(new Error("Unexpected"));
+    mockGetEventTypes.mockRejectedValueOnce(new Error("Unexpected"));
 
     const response = await POST(createRequest(validBody));
+
     expect(response.status).toBe(500);
   });
 });

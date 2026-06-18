@@ -6,8 +6,8 @@
 const REQUIRED_ENV_VARS = [
   "ELEVENLABS_API_KEY",
   "ANTHROPIC_API_KEY",
-  "CAL_COM_API_KEY",
   "CAL_COM_EVENT_TYPE_ID",
+  "CALCOM_DATABASE_URL",
 ] as const;
 
 /**
@@ -16,7 +16,6 @@ const REQUIRED_ENV_VARS = [
  */
 const ENV_DEFAULTS: Record<string, string> = {
   CAL_COM_BASE_URL: "http://localhost:3000",
-  CALCOM_DATABASE_URL: "postgresql://calcom:calcom@localhost:5432/calcom",
   PORT: "3001",
 } as const;
 

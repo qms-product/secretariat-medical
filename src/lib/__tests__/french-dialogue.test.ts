@@ -6,8 +6,8 @@ describe("Configuration dialogue français naturel (IMP-38 / REQ-97)", () => {
   const prompt = buildSystemPrompt();
 
   describe("Toutes les réponses sont en français", () => {
-    it("should instruct the assistant to respond exclusively in French", () => {
-      expect(prompt).toContain("exclusivement en francais");
+    it("should instruct the assistant to respond in French", () => {
+      expect(prompt).toContain("Tu reponds en francais");
     });
 
     it("should specify French language in general rules", () => {
@@ -15,52 +15,50 @@ describe("Configuration dialogue français naturel (IMP-38 / REQ-97)", () => {
     });
 
     it("should use French politeness conventions (vouvoiement)", () => {
-      expect(prompt).toContain("vouvoiement");
+      expect(prompt).toContain("vouvoies toujours");
     });
 
     it("should never use informal address (tutoiement)", () => {
-      expect(prompt).toContain("tutoies jamais");
+      // The prompt instructs to always use "vous" (vouvoiement)
+      expect(prompt).toContain("vouvoies toujours le patient");
     });
 
     it("should include French greeting formulas", () => {
       expect(prompt).toContain("Bonjour");
-      expect(prompt).toContain("Bonne journee");
     });
   });
 
   describe("Le vocabulaire est adapté au contexte médical", () => {
-    it("should specify use of medical vocabulary accessible to patients", () => {
-      expect(prompt).toContain("vocabulaire medical courant");
+    it("should define the role as a medical secretary", () => {
+      expect(prompt).toContain("secretaire medicale au telephone");
     });
 
-    it("should list expected medical terms", () => {
-      expect(prompt).toContain("consultation");
-      expect(prompt).toContain("creneau");
-      expect(prompt).toContain("praticien");
+    it("should reference medical context terms in the prompt", () => {
       expect(prompt).toContain("cabinet");
+      expect(prompt).toContain("creneau");
     });
 
-    it("should instruct to avoid unnecessary technical jargon", () => {
-      expect(prompt).toContain("jargon technique inutile");
+    it("should instruct professional but warm tone", () => {
+      expect(prompt).toContain("professionnel mais chaleureux");
     });
 
-    it("should specify a professional register for medical context", () => {
-      expect(prompt).toContain("registre professionnel");
-      expect(prompt).toContain("contexte medical");
+    it("should define the oral-only style for medical context", () => {
+      expect(prompt).toContain("ORAL PUR");
     });
   });
 
   describe("Les phrases sont naturelles et fluides", () => {
-    it("should instruct natural and fluid speech style", () => {
-      expect(prompt).toContain("naturelles et fluides");
+    it("should instruct concise responses", () => {
+      expect(prompt).toContain("CONCISION");
+      expect(prompt).toContain("courtes possible");
     });
 
-    it("should instruct short, clear, and direct sentences", () => {
-      expect(prompt).toContain("courtes, claires et directes");
+    it("should instruct short responses per turn", () => {
+      expect(prompt).toContain("Une ou deux phrases maximum");
     });
 
-    it("should reference the tone of an experienced medical secretary", () => {
-      expect(prompt).toContain("secretaire medicale experimentee");
+    it("should reference the role of a medical secretary", () => {
+      expect(prompt).toContain("secretaire medicale");
     });
 
     it("should include the IMP-38 / REQ-97 reference in the prompt section", () => {

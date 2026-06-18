@@ -4,15 +4,15 @@ import { validateEnv, getRequiredEnvVars, getEnvDefaults, getEnvVar } from "../e
 function stubAllRequired() {
   vi.stubEnv("ELEVENLABS_API_KEY", "test-elevenlabs-key");
   vi.stubEnv("ANTHROPIC_API_KEY", "test-anthropic-key");
-  vi.stubEnv("CAL_COM_API_KEY", "test-calcom-key");
   vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "123");
+  vi.stubEnv("CALCOM_DATABASE_URL", "postgresql://calcom:calcom@localhost:5432/calendso");
 }
 
 function clearAllRequired() {
   vi.stubEnv("ELEVENLABS_API_KEY", "");
   vi.stubEnv("ANTHROPIC_API_KEY", "");
-  vi.stubEnv("CAL_COM_API_KEY", "");
   vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "");
+  vi.stubEnv("CALCOM_DATABASE_URL", "");
 }
 
 describe("Environment variable validation (IMP-4)", () => {
@@ -57,15 +57,15 @@ describe("Environment variable validation (IMP-4)", () => {
     expect(result.valid).toBe(false);
     expect(result.missing).toContain("ELEVENLABS_API_KEY");
     expect(result.missing).toContain("ANTHROPIC_API_KEY");
-    expect(result.missing).toContain("CAL_COM_API_KEY");
     expect(result.missing).toContain("CAL_COM_EVENT_TYPE_ID");
+    expect(result.missing).toContain("CALCOM_DATABASE_URL");
   });
 
   it("should reject whitespace-only values", () => {
     vi.stubEnv("ELEVENLABS_API_KEY", "   ");
     vi.stubEnv("ANTHROPIC_API_KEY", "  \t  ");
-    vi.stubEnv("CAL_COM_API_KEY", "  ");
     vi.stubEnv("CAL_COM_EVENT_TYPE_ID", " ");
+    vi.stubEnv("CALCOM_DATABASE_URL", "  ");
 
     const result = validateEnv();
     expect(result.valid).toBe(false);
@@ -76,8 +76,8 @@ describe("Environment variable validation (IMP-4)", () => {
     const required = getRequiredEnvVars();
     expect(required).toContain("ELEVENLABS_API_KEY");
     expect(required).toContain("ANTHROPIC_API_KEY");
-    expect(required).toContain("CAL_COM_API_KEY");
     expect(required).toContain("CAL_COM_EVENT_TYPE_ID");
+    expect(required).toContain("CALCOM_DATABASE_URL");
     expect(required).toHaveLength(4);
   });
 
@@ -98,15 +98,6 @@ describe("Cal.com environment variables (IMP-24)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should detect missing CAL_COM_API_KEY", () => {
-    stubAllRequired();
-    vi.stubEnv("CAL_COM_API_KEY", "");
-
-    const result = validateEnv();
-    expect(result.valid).toBe(false);
-    expect(result.missing).toContain("CAL_COM_API_KEY");
-  });
-
   it("should detect missing CAL_COM_EVENT_TYPE_ID", () => {
     stubAllRequired();
     vi.stubEnv("CAL_COM_EVENT_TYPE_ID", "");
@@ -114,6 +105,15 @@ describe("Cal.com environment variables (IMP-24)", () => {
     const result = validateEnv();
     expect(result.valid).toBe(false);
     expect(result.missing).toContain("CAL_COM_EVENT_TYPE_ID");
+  });
+
+  it("should detect missing CALCOM_DATABASE_URL", () => {
+    stubAllRequired();
+    vi.stubEnv("CALCOM_DATABASE_URL", "");
+
+    const result = validateEnv();
+    expect(result.valid).toBe(false);
+    expect(result.missing).toContain("CALCOM_DATABASE_URL");
   });
 
   it("should have a default value for CAL_COM_BASE_URL", () => {
@@ -160,23 +160,6 @@ describe("CALCOM_DATABASE_URL environment variable (IMP-30, ADR-11)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should have a default value for CALCOM_DATABASE_URL", () => {
-    const defaults = getEnvDefaults();
-    expect(defaults.CALCOM_DATABASE_URL).toBe(
-      "postgresql://calcom:calcom@localhost:5432/calcom"
-    );
-  });
-
-  it("should not require CALCOM_DATABASE_URL (has default)", () => {
-    const required = getRequiredEnvVars();
-    expect(required).not.toContain("CALCOM_DATABASE_URL");
-  });
-
-  it("should return default CALCOM_DATABASE_URL when not set", () => {
-    const value = getEnvVar("CALCOM_DATABASE_URL");
-    expect(value).toBe("postgresql://calcom:calcom@localhost:5432/calcom");
-  });
-
   it("should return explicit CALCOM_DATABASE_URL when set", () => {
     vi.stubEnv(
       "CALCOM_DATABASE_URL",
@@ -185,12 +168,5 @@ describe("CALCOM_DATABASE_URL environment variable (IMP-30, ADR-11)", () => {
 
     const value = getEnvVar("CALCOM_DATABASE_URL");
     expect(value).toBe("postgresql://user:pass@prod-host:5432/calcom");
-  });
-
-  it("should fall back to default when CALCOM_DATABASE_URL is whitespace-only", () => {
-    vi.stubEnv("CALCOM_DATABASE_URL", "   ");
-
-    const value = getEnvVar("CALCOM_DATABASE_URL");
-    expect(value).toBe("postgresql://calcom:calcom@localhost:5432/calcom");
   });
 });

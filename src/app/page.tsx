@@ -17,6 +17,7 @@ export default function Home() {
   const [conversationHistory, setConversationHistory] = useState<
     { role: "user" | "assistant"; content: string }[]
   >([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -103,10 +104,17 @@ export default function Home() {
       const llmRes = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newHistory }),
+        body: JSON.stringify({
+          messages: newHistory,
+          ...(conversationId ? { conversationId } : {}),
+        }),
       });
       if (!llmRes.ok) throw new Error("LLM failed");
-      const { reply } = await llmRes.json();
+      const llmData = await llmRes.json();
+      const { reply } = llmData;
+      if (llmData.conversationId) {
+        setConversationId(llmData.conversationId);
+      }
       setResponse(reply);
 
       setConversationHistory([
@@ -143,7 +151,7 @@ export default function Home() {
       setError(VOICE_FLOW_ERRORS[errorType].default);
       setStatus("idle");
     }
-  }, [conversationHistory, status]);
+  }, [conversationHistory, conversationId, status]);
 
   const statusLabels: Record<FlowStatus, string> = {
     idle: "",
@@ -158,7 +166,7 @@ export default function Home() {
     <main style={{ maxWidth: 600, margin: "0 auto", padding: "2rem" }}>
       <h1>Assistant Vocal - Secretariat Medical</h1>
       <p style={{ color: "#666", fontSize: "0.875rem" }}>
-        Donnees fictives uniquement — demonstration
+        Données de demonstration
       </p>
 
       <div style={{ margin: "2rem 0" }}>

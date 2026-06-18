@@ -231,7 +231,7 @@ describe("conversation-state", () => {
       const session = createSession();
       const prompt = buildStatePrompt(session);
       expect(prompt).toContain("GREETING");
-      expect(prompt).toContain("Saluer");
+      expect(prompt).toContain("Accueille");
     });
 
     it("should include SLOT_PROPOSAL state instructions", () => {
@@ -267,7 +267,7 @@ describe("conversation-state", () => {
       session.state = ConversationState.BOOKING;
       const prompt = buildStatePrompt(session);
       expect(prompt).toContain("BOOKING");
-      expect(prompt).toContain("creation");
+      expect(prompt).toContain("cree le rendez-vous");
     });
   });
 
